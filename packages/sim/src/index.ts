@@ -2,6 +2,8 @@
 export const SIM_VERSION = '0.1.0';
 
 export * from './autoAim';
+export * from './bots/brain';
+export * from './bots/squad';
 export * from './constants';
 export * from './combat';
 export * from './crates';

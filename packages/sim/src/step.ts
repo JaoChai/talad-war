@@ -1,4 +1,5 @@
 import { ARENA_H, ARENA_W, CARRY_SPEED, DT, UNIT_RADIUS, UNIT_SPEED } from './constants';
+import { botInput } from './bots/brain';
 import { updateProjectiles, processAttacks, updateRespawns, updateWinner } from './combat';
 import { spawnCrates, tryDrop, tryPick, updateCrateFalls } from './crates';
 import { clamp, vecClampLength, vecNormalize } from './geometry';
@@ -46,14 +47,26 @@ export function step(
   // or damage; `events` stays empty).
   if (s.winner !== null) return next;
 
-  // Phase 1: squad commands — no behaviour until Task 5.
-  void commands;
-  // Phase 2: bot inputs — no behaviour until Task 5.
+  // Phase 1: squad commands — store what arrived; a missing key keeps the
+  // previous command (commands persist in the state until changed or cleared).
+  if (commands !== undefined) {
+    if (commands.fruit !== undefined) next.commands.fruit = commands.fruit;
+    if (commands.dessert !== undefined) next.commands.dessert = commands.dessert;
+  }
+
+  // Phase 2: bot inputs — every living isBot unit is driven by botInput on the
+  // post-command state, overriding anything passed in for that unit; the human
+  // unit's input is never overridden.
+  const effective = new Map(inputs);
+  for (const unit of next.units) {
+    if (!unit.isBot || unitDead(unit)) continue;
+    effective.set(unit.id, botInput(next, unit.id));
+  }
 
   // Phase 3: movement (the dead do not move — Task 4 rule).
   for (const unit of next.units) {
     if (unitDead(unit)) continue;
-    moveUnit(unit, inputs.get(unit.id) ?? IDLE_INPUT);
+    moveUnit(unit, effective.get(unit.id) ?? IDLE_INPUT);
   }
 
   // Phases 4-5 share one decision: each pickDrop pulse performs exactly ONE action,
@@ -63,7 +76,7 @@ export function step(
   const openWins = new Set<UnitId>();
   const venue = new Map<UnitId, 'ground' | 'pad'>();
   for (const unit of next.units) {
-    const input = inputs.get(unit.id) ?? IDLE_INPUT;
+    const input = effective.get(unit.id) ?? IDLE_INPUT;
     if (unitDead(unit)) continue; // the dead do not act (Task 4 rule)
     if (input.open && canOpen(next, unit.id)) openWins.add(unit.id);
     if (!input.pickDrop || openWins.has(unit.id)) continue;
@@ -81,7 +94,7 @@ export function step(
 
   // Phase 4: pick/drop, ascending unit id so the lower id wins same-crate ties.
   for (const unit of next.units) {
-    const input = inputs.get(unit.id) ?? IDLE_INPUT;
+    const input = effective.get(unit.id) ?? IDLE_INPUT;
     if (!input.pickDrop || openWins.has(unit.id) || venue.get(unit.id) !== 'ground') continue;
     if (unit.carrying !== null) tryDrop(next, unit);
     else tryPick(next, unit);
@@ -89,7 +102,7 @@ export function step(
 
   // Phase 5: pad — place while carrying, lift the top crate when empty-handed.
   for (const unit of next.units) {
-    const input = inputs.get(unit.id) ?? IDLE_INPUT;
+    const input = effective.get(unit.id) ?? IDLE_INPUT;
     if (!input.pickDrop || openWins.has(unit.id) || venue.get(unit.id) !== 'pad') continue;
     const col = padCellAt(next.pads[unit.team], unit.pos);
     if (col === null) continue; // unreachable: decided on the same post-movement state
@@ -101,7 +114,7 @@ export function step(
   // rechecked: phases 4-5 may have changed the pad or the opening state.
   updateOpens(next);
   for (const unit of next.units) {
-    const input = inputs.get(unit.id) ?? IDLE_INPUT;
+    const input = effective.get(unit.id) ?? IDLE_INPUT;
     if (input.open && openWins.has(unit.id) && canOpen(next, unit.id)) {
       startOpen(next, unit.id);
     }
@@ -109,7 +122,7 @@ export function step(
 
   // Phase 7: combat — attacks (cooldowns, slaps, bullets, bombs), then projectile
   // motion. Freshly spawned projectiles first act on the next tick.
-  const freshProjectiles = processAttacks(next, inputs);
+  const freshProjectiles = processAttacks(next, effective);
   updateProjectiles(next, freshProjectiles);
 
   // Phase 8: respawn — heal the dead back at their stall once deadUntilTick arrives.
