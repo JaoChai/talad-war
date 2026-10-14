@@ -1,0 +1,26 @@
+{
+  "name": "@talad/client",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "e2e": "VITE_TEST_HOOKS=1 npm run build && playwright test",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@talad/sim": "*",
+    "phaser": "4.2.1"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.60.2",
+    "@playwright/test": "1.63.0",
+    "happy-dom": "20.14.5",
+    "vite": "8.3.1",
+    "vitest": "5.0.2",
+    "wrangler": "4.141.0"
+  }
+}
