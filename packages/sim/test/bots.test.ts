@@ -379,12 +379,14 @@ describe('bots: mirror symmetry (card t_38d70034)', () => {
  * Full-match acceptance (card t_38d70034): 200 all-bot seeds (the card's report
  * scale) at current constants must finish (no timeouts), use the whole loadout
  * (bombs opened and thrown), put >= 25% of stall damage on bullets+bombs, and
- * stay balanced and paced. Stall-hit sources are told apart by their damage
- * value: SLAP_DMG, GUN_DMG and BOMB_DMG * BOMB_STALL_MULT are the only three
- * amounts a stall can take.
+ * take at least 60 s at the median (sanity floor only). There is deliberately
+ * no pacing ceiling: plan Task 6 tunes constants toward a 300-480 s median, so
+ * an upper bound here would block that card. Stall-hit sources are told apart
+ * by their damage value: SLAP_DMG, GUN_DMG and BOMB_DMG * BOMB_STALL_MULT are
+ * the only three amounts a stall can take.
  */
 describe('bots: full-match acceptance (card t_38d70034)', () => {
-  it('200 seeds: bombs opened >= 20, explosions >= 20, bullets+bombs >= 25% of stall damage, wins 42-58%, median 60-240 s, 0 timeouts', () => {
+  it('200 seeds: bombs opened >= 20, explosions >= 20, bullets+bombs >= 25% of stall damage, median >= 60 s, 0 timeouts', () => {
     const SEEDS = 200;
     const bombStallDmg = BOMB_DMG * BOMB_STALL_MULT;
     const CAP_TICKS = 900 * 20; // 15 min
@@ -429,7 +431,6 @@ describe('bots: full-match acceptance (card t_38d70034)', () => {
     expect(explosions).toBeGreaterThanOrEqual(20);
     expect(rangedShare).toBeGreaterThanOrEqual(0.25);
     expect(median).toBeGreaterThanOrEqual(60);
-    expect(median).toBeLessThanOrEqual(240);
     expect(timeouts).toBe(0);
     // Win rate is REPORTED, not gated: across near-fair builds it measured
     // 40.5-42.5% on this fixed 200-seed population (sd ~3.5 points), moving
