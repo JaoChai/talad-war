@@ -50,8 +50,18 @@ function commandsFor(tick: number): Partial<Record<Team, SquadCommand>> {
   return { fruit: seq[tick % 3], dessert: seq[(tick + 1) % 3] };
 }
 
+/**
+ * These tests script every unit's input directly, so all starting units are
+ * pinned non-bot: step() must not let a bot override a scripted input
+ * (T5 rework decision A: keep the override semantics).
+ */
+function pinNoBots(s: MatchState): MatchState {
+  for (const unit of s.units) unit.isBot = false;
+  return s;
+}
+
 function runScripted(): MatchState {
-  let s = createMatch(7);
+  let s = pinNoBots(createMatch(7));
   for (let t = 0; t < 2000; t++) s = step(s, inputsFor(t), commandsFor(t));
   return s;
 }
@@ -118,7 +128,7 @@ function padPulse(tick: number, id: UnitId): UnitInput {
 }
 
 function runPadScript(): PadRun {
-  let s = createMatch(11);
+  let s = pinNoBots(createMatch(11));
   // Direct state surgery (pad.test.ts convention): two fruit carriers stand on
   // their own pad — wandering units never reach a pad within 2000 ticks.
   must(s.units.find((u) => u.id === 0)).pos = { ...must(PAD_COL[1]) };

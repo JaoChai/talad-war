@@ -26,6 +26,16 @@ function inp(over: Partial<UnitInput> = {}): UnitInput {
   };
 }
 
+/**
+ * These tests script every unit's input directly, so all starting units are
+ * pinned non-bot: step() must not let a bot override a scripted input
+ * (T5 rework decision A: keep the override semantics).
+ */
+function pinNoBots(s: MatchState): MatchState {
+  for (const unit of s.units) unit.isBot = false;
+  return s;
+}
+
 /** Fruit pad (8,18)-(11,21): col = cellX + 2*cellY. */
 const COL_CENTERS: Vec2[] = [
   { x: 8.75, y: 18.75 }, // col 0
@@ -78,14 +88,14 @@ function runTicks(s: MatchState, ticks: number): MatchState {
 
 /** Fruit pad with a gun recipe on col 0, unit 0 standing there, empty-handed. */
 function gunMatch(): MatchState {
-  const s = createMatch(5);
+  const s = pinNoBots(createMatch(5));
   putOnPad(s, 'fruit', 0, 0, 100);
   unitAt(s, 0, must(COL_CENTERS[0]));
   return s;
 }
 
 function bombsMatch(): MatchState {
-  const s = createMatch(5);
+  const s = pinNoBots(createMatch(5));
   putOnPad(s, 'fruit', 0, 0, 100);
   putOnPad(s, 'fruit', 1, 0, 101);
   unitAt(s, 0, must(COL_CENTERS[0]));
@@ -93,7 +103,7 @@ function bombsMatch(): MatchState {
 }
 
 function buddyMatch(): MatchState {
-  const s = createMatch(5);
+  const s = pinNoBots(createMatch(5));
   putOnPad(s, 'fruit', 1, 0, 100);
   putOnPad(s, 'fruit', 1, 1, 101);
   unitAt(s, 0, must(COL_CENTERS[1]));
@@ -248,7 +258,7 @@ describe('the Open! channel', () => {
   });
 
   it('pickDrop applies when canOpen is false (carrying an empty pad)', () => {
-    const s0 = createMatch(5);
+    const s0 = pinNoBots(createMatch(5));
     unitAt(s0, 0, must(COL_CENTERS[0]));
     giveCarriedCrate(s0, 0, 102);
 
