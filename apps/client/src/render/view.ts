@@ -49,9 +49,12 @@ function stallTexture(team: Team, hp: number): string {
 export class MatchView {
   private readonly units = new Map<number, UnitView>();
   private readonly crates = new Map<number, CrateView>();
+  private readonly fallingShadows = new Map<number, Phaser.GameObjects.Ellipse>();
   private readonly projectiles = new Map<number, ProjectileView>();
   private readonly padSprites = new Map<string, Phaser.GameObjects.Image>();
   private readonly stallSprites: Partial<Record<Team, Phaser.GameObjects.Image>> = {};
+  /** Small marker above the human unit (card Task mapping). */
+  private readonly humanMarker: Phaser.GameObjects.Triangle;
 
   constructor(private readonly scene: Phaser.Scene) {
     const arena = scene.add.image(0, 0, 'arena');
@@ -65,6 +68,9 @@ export class MatchView {
       stall.setOrigin(0.5, 0.72);
       this.stallSprites[team] = stall;
     }
+
+    this.humanMarker = scene.add.triangle(0, 0, 0, 10, 10, 0, 20, 10, 0xffd75e);
+    this.humanMarker.setDepth(2000);
   }
 
   sync(prev: MatchState, cur: MatchState, alpha: number): void {
@@ -114,6 +120,19 @@ export class MatchView {
             : IDLE_FRAME;
       view.sprite.setFrame(frame);
       view.sprite.setFlipX(unit.facing.x < -0.01);
+    }
+
+    // Marker above the human unit (unit 0, fruit).
+    const human = cur.units[0];
+    if (human && human.deadUntilTick === null) {
+      const hBefore = prevUnits.get(human.id);
+      const hx = hBefore ? Phaser.Math.Linear(hBefore.pos.x, human.pos.x, alpha) : human.pos.x;
+      const hy = hBefore ? Phaser.Math.Linear(hBefore.pos.y, human.pos.y, alpha) : human.pos.y;
+      const at = worldToStage({ x: hx, y: hy });
+      this.humanMarker.setPosition(at.x, at.y - UNIT_DISPLAY_HEIGHT - 6 + Math.sin(now / 250) * 3);
+      this.humanMarker.setVisible(true);
+    } else {
+      this.humanMarker.setVisible(false);
     }
 
     this.syncCrates(prev, cur, alpha);
@@ -193,8 +212,19 @@ export class MatchView {
         view.sprite.setY(at.y - (1 - progress) * 110);
         view.sprite.setX(at.x);
         view.sprite.setDepth(depth);
+        // Shadow grows at the landing point as the crate drops.
+        let shadow = this.fallingShadows.get(crate.id);
+        if (!shadow) {
+          shadow = this.scene.add.ellipse(at.x, at.y, 26, 9, 0x000000, 0.3);
+          this.fallingShadows.set(crate.id, shadow);
+        }
+        shadow.setPosition(at.x, at.y);
+        shadow.setSize(10 + 18 * progress, 4 + 6 * progress);
+        shadow.setDepth(Math.floor(at.y) - 3);
         continue;
       }
+      this.fallingShadows.get(crate.id)?.destroy();
+      this.fallingShadows.delete(crate.id);
       view.sprite.setTexture('crate');
       if (crate.state === 'carried') {
         const carrier = cur.units.find((u) => u.carrying === crate.id);
@@ -224,6 +254,8 @@ export class MatchView {
     for (const [id, view] of this.crates) {
       if (!alive.has(id)) {
         view.sprite.destroy();
+        this.fallingShadows.get(id)?.destroy();
+        this.fallingShadows.delete(id);
         this.crates.delete(id);
       }
     }
