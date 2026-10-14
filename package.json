@@ -1,0 +1,30 @@
+{
+  "name": "talad-war",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "test": "npm run test --workspaces --if-present",
+    "sim": "npm run sim -w @talad/sim --",
+    "build": "npm run build --workspaces --if-present",
+    "e2e": "npm run e2e -w @talad/client",
+    "deploy": "npm run deploy -w @talad/client"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.11.0",
+    "prettier": "3.9.9",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.1"
+  }
+}
