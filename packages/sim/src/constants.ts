@@ -23,8 +23,8 @@ export const CRATE_MARGIN = 0.1;
 
 /** Q9 loadout values: units respawn at this HP after death. */
 export const UNIT_MAX_HP = 100;
-/** Q5 win condition target: one bullet of stall HP is 12/1500 of the total. */
-export const STALL_MAX_HP = 1500;
+/** Q5 win condition target (Task 6-tuned pacing: ~6 min all-bot median). */
+export const STALL_MAX_HP = 6500;
 
 /**
  * Task 4 combat values (initial — the balance harness tunes them later).

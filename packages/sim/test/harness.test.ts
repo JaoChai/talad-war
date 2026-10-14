@@ -35,8 +35,7 @@ describe('runBatch', () => {
 
   it('wins + draws + timeouts sum the games (draws count for neither team)', () => {
     const r = runBatch({ games: 5, seed0: 1, maxMinutes: 15 });
-    const buckets =
-      r.winRate.fruit + r.winRate.dessert + r.draws / r.games + r.timeouts / r.games;
+    const buckets = r.winRate.fruit + r.winRate.dessert + r.draws / r.games + r.timeouts / r.games;
     expect(buckets).toBeCloseTo(1, 10);
   });
 });
@@ -65,6 +64,7 @@ describe('checkTargets (--assert bands)', () => {
       medianSec: 300,
       p90Sec: 480,
       winRate: { fruit: 0.55, dessert: 0.45 },
+      draws: 0,
       timeouts: 20,
       msPerTick: 0.5,
     };
