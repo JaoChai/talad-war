@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { createMatch, stateHash, step } from '../src/index';
-import type { MatchState, SquadCommand, Team, UnitId, UnitInput, Vec2 } from '../src/index';
+import type {
+  MatchEvent,
+  MatchState,
+  SquadCommand,
+  Team,
+  UnitId,
+  UnitInput,
+  Vec2,
+} from '../src/index';
 
 const UNIT_IDS: UnitId[] = [0, 1, 2, 3, 4, 5];
 
@@ -59,35 +67,100 @@ describe('determinism', () => {
   });
 });
 
-/** Scripted pad activity: movement + pickDrop pulses (place/lift) + open pulses. */
-function padInputFor(tick: number): UnitInput {
-  return {
-    move: must(DIRS[tick % DIRS.length]),
+/** What one scripted pad run did — the assertions below need this to prove traffic. */
+interface PadRun {
+  final: MatchState;
+  events: MatchEvent[];
+  openedRecipes: string[];
+  ticksWithOnPadCrate: number;
+}
+
+/** Fruit pad col centers — pad (8,18)-(11,21), col = cellX + 2*cellY. */
+const PAD_COL: Vec2[] = [
+  { x: 8.75, y: 18.75 }, // col 0
+  { x: 10.25, y: 18.75 }, // col 1
+  { x: 8.75, y: 20.25 }, // col 2
+  { x: 10.25, y: 20.25 }, // col 3
+];
+
+const CRATE_A = 900;
+const CRATE_B = 901;
+
+/** Pad.test.ts convention: ids 900+ never collide with sky-spawned crates. */
+function giveCarriedCrate(s: MatchState, unitId: UnitId, crateId: number): void {
+  const unit = must(s.units.find((u) => u.id === unitId));
+  unit.carrying = crateId;
+  s.crates.push({ id: crateId, pos: { ...unit.pos }, state: 'carried', landTick: 0 });
+}
+
+/**
+ * Deterministic pulse schedule over otherwise idle ticks, one action per pulse:
+ * t5 unit 0 places A on col 1, t6 opens (gun), t7 unit 1 places B so the pad
+ * snapshot differs and the opening cancels; t8 unit 1 lifts B back off, t10
+ * unit 0 lifts A, t12 places it again, t14 opens again — one crate left, so
+ * that opening completes with the gun.
+ */
+function padPulse(tick: number, id: UnitId): UnitInput {
+  const input: UnitInput = {
+    move: { x: 0, y: 0 },
     aim: null,
     fire: false,
     throwBomb: false,
-    pickDrop: tick % 37 === 0,
-    open: tick % 211 === 0,
+    pickDrop: false,
+    open: false,
   };
+  if (id === 0) {
+    if (tick === 6 || tick === 14) input.open = true;
+    if (tick === 5 || tick === 10 || tick === 12) input.pickDrop = true;
+  }
+  if (id === 1 && (tick === 7 || tick === 8)) input.pickDrop = true;
+  return input;
 }
 
-function runPadScript(): MatchState {
+function runPadScript(): PadRun {
   let s = createMatch(11);
+  // Direct state surgery (pad.test.ts convention): two fruit carriers stand on
+  // their own pad — wandering units never reach a pad within 2000 ticks.
+  must(s.units.find((u) => u.id === 0)).pos = { ...must(PAD_COL[1]) };
+  must(s.units.find((u) => u.id === 1)).pos = { ...must(PAD_COL[3]) };
+  giveCarriedCrate(s, 0, CRATE_A);
+  giveCarriedCrate(s, 1, CRATE_B);
+  const events: MatchEvent[] = [];
+  let ticksWithOnPadCrate = 0;
   for (let t = 0; t < 2000; t++) {
     const inputs = new Map<UnitId, UnitInput>();
-    for (const id of UNIT_IDS) inputs.set(id, padInputFor(t));
+    for (const id of UNIT_IDS) inputs.set(id, padPulse(t, id));
     s = step(s, inputs);
+    events.push(...s.events);
+    if (s.crates.some((c) => c.state === 'onPad')) ticksWithOnPadCrate++;
   }
-  return s;
+  return {
+    final: s,
+    events,
+    openedRecipes: events.filter((e) => e.kind === 'opened').map((e) => String(e.recipe)),
+    ticksWithOnPadCrate,
+  };
 }
 
 describe('determinism with pad traffic', () => {
   it('2000 scripted place/lift/open ticks from seed 11, run twice, produce an identical stateHash', () => {
     const first = runPadScript();
     const second = runPadScript();
-    expect(first.tick).toBe(2000);
-    expect(first.winner).toBeNull();
-    expect(stateHash(first)).toBe(stateHash(second));
-    expect(first).toEqual(second);
+
+    // The script must really drive the pad: at least one place, one lift, one
+    // completed open and one cancelled open inside the 2000 ticks.
+    expect(first.ticksWithOnPadCrate).toBeGreaterThan(0); // a placement sat on the pad
+    expect(first.events.filter((e) => e.kind === 'openStarted').length).toBe(2);
+    expect(first.events.some((e) => e.kind === 'openCancelled')).toBe(true);
+    expect(first.openedRecipes).toEqual(['gun']); // exactly one completed open
+    expect(must(first.final.units.find((u) => u.id === 0)).gun).toEqual({
+      ammoCooldownTicks: 0,
+    });
+    expect(first.final.pads.fruit.opening).toBeNull();
+
+    expect(first.final.tick).toBe(2000);
+    expect(first.final.winner).toBeNull();
+    expect(stateHash(first.final)).toBe(stateHash(second.final));
+    expect(first.final).toEqual(second.final);
   });
 });
