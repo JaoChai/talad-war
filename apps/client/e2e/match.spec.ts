@@ -1,15 +1,5 @@
 import { expect, test } from '@playwright/test';
-import {
-  driveTo,
-  getState,
-  joyDriver,
-  keyDriver,
-  padCrateCount,
-  waitHooks,
-  type Driver,
-} from './helpers';
-
-const PAD_COL0 = { x: 8.75, y: 18.75 }; // fruit pad column 0 center
+import { getState, joyDriver, keyDriver, padCrateCount, waitHooks, type Driver } from './helpers';
 
 test.describe('match scene', () => {
   test('boots into a running 2-team match that ticks', async ({ page }) => {
@@ -114,9 +104,10 @@ test.describe('match scene', () => {
       .poll(async () => (await getState(page)).units[0]!.carrying, { timeout: 5_000 })
       .not.toBeNull();
 
-    // Short straight haul to the own pad column; guard bots keep the lane clear.
-    const walked = await driveTo(page, driver, PAD_COL0, { within: 0.4, budgetMs: 12_000 });
-    expect(walked, 'walked the crate to the own pad column').toBe(true);
+    // Scripted carry leg (review round 1 #1): the hooks place the carrying
+    // unit on the own pad column — a real carried crate through a real drop,
+    // with no wall-clock walk for CI latency to break.
+    await page.evaluate(() => window.__talad.placeUnit(0, 8.75, 18.75));
     await driver.action(); // drop on the pad
     await expect
       .poll(async () => padCrateCount(await getState(page)), { timeout: 5_000 })
