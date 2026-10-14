@@ -1,19 +1,12 @@
 import Phaser from 'phaser';
 import './shell.css';
+import { BootScene } from './scenes/Boot';
+import { MatchScene } from './scenes/Match';
+import { STAGE_H, STAGE_W } from './render/world';
 
 /** Logical 720p stage; Scale.FIT letterboxes it into any screen. */
-export const GAME_WIDTH = 1280;
-export const GAME_HEIGHT = 720;
-
-class BootScene extends Phaser.Scene {
-  constructor() {
-    super('boot');
-  }
-
-  create() {
-    // Intentionally empty — the map, walk and market UI land in later tasks.
-  }
-}
+export const GAME_WIDTH = STAGE_W;
+export const GAME_HEIGHT = STAGE_H;
 
 export default new Phaser.Game({
   type: Phaser.AUTO,
@@ -28,5 +21,5 @@ export default new Phaser.Game({
   input: {
     activePointers: 4,
   },
-  scene: [BootScene],
+  scene: [BootScene, MatchScene],
 });

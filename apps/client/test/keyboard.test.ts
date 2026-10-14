@@ -5,7 +5,7 @@ import { KeyboardInput } from '../src/input/keyboard';
 /** Fruit pad with one crate in column 0; unit 0 standing on that column. */
 function stateWithOpenablePad() {
   const s = createMatch(1);
-  s.pads.fruit.cells[0][0] = 1;
+  s.pads.fruit.cells[0]![0] = 1;
   const on = padCellCenter(s.pads.fruit, 0);
   s.units[0]!.pos = { x: on.x, y: on.y };
   return s;

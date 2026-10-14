@@ -10,7 +10,10 @@ export class FixedLoop {
   private acc = 0;
   private readonly frameMs: number;
 
-  constructor(hz: number, public readonly maxCatchUpTicks: number = 5) {
+  constructor(
+    hz: number,
+    public readonly maxCatchUpTicks: number = 5,
+  ) {
     this.frameMs = 1000 / hz;
   }
 
