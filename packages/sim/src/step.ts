@@ -2,7 +2,9 @@ import { ARENA_H, ARENA_W, CARRY_SPEED, DT, UNIT_RADIUS, UNIT_SPEED } from './co
 import { spawnCrates, tryDrop, tryPick, updateCrateFalls } from './crates';
 import { clamp, vecClampLength, vecNormalize } from './geometry';
 import { isUnitWalkable } from './map';
-import type { MatchState, SquadCommand, Team, Unit, UnitInput, UnitId, Vec2 } from './types';
+import { startOpen, updateOpens } from './open';
+import { canOpen, liftTop, padCellAt, padCellCenter, placeCrate } from './pad';
+import type { MatchState, Pad, SquadCommand, Team, Unit, UnitInput, UnitId, Vec2 } from './types';
 
 /**
  * Fixed per-tick phase order — do not reorder; later tasks fill their phase in place:
@@ -46,15 +48,57 @@ export function step(
   // Phase 3: movement.
   for (const unit of next.units) moveUnit(unit, inputs.get(unit.id) ?? IDLE_INPUT);
 
+  // Phases 4-5 share one decision: each pickDrop pulse performs exactly ONE action,
+  // chosen here on the post-movement state. "Open wins if canOpen, else pickDrop
+  // applies" — decided once per tick too, so one input never performs both actions.
+  // A unit absent from `venue` performs nothing this tick (open won, or enemy pad).
+  const openWins = new Set<UnitId>();
+  const venue = new Map<UnitId, 'ground' | 'pad'>();
+  for (const unit of next.units) {
+    const input = inputs.get(unit.id) ?? IDLE_INPUT;
+    if (input.open && canOpen(next, unit.id)) openWins.add(unit.id);
+    if (!input.pickDrop || openWins.has(unit.id)) continue;
+    if (padCellAt(next.pads[otherTeam(unit.team)], unit.pos) !== null) continue; // no stealing
+    const col = padCellAt(next.pads[unit.team], unit.pos);
+    // On the own pad: place while carrying, lift from an occupied column (priority
+    // over the ground pick); an empty column keeps the T2 ground pick.
+    venue.set(
+      unit.id,
+      col !== null && (unit.carrying !== null || columnCrateCount(next.pads[unit.team], col) > 0)
+        ? 'pad'
+        : 'ground',
+    );
+  }
+
   // Phase 4: pick/drop, ascending unit id so the lower id wins same-crate ties.
   for (const unit of next.units) {
     const input = inputs.get(unit.id) ?? IDLE_INPUT;
-    if (!input.pickDrop) continue;
-    if (unit.carrying === null) tryPick(next, unit);
-    else tryDrop(next, unit);
+    if (!input.pickDrop || openWins.has(unit.id) || venue.get(unit.id) !== 'ground') continue;
+    if (unit.carrying !== null) tryDrop(next, unit);
+    else tryPick(next, unit);
   }
 
-  // Phases 5-8: pad / open / combat / respawn — no behaviour until Tasks 3-4.
+  // Phase 5: pad — place while carrying, lift the top crate when empty-handed.
+  for (const unit of next.units) {
+    const input = inputs.get(unit.id) ?? IDLE_INPUT;
+    if (!input.pickDrop || openWins.has(unit.id) || venue.get(unit.id) !== 'pad') continue;
+    const col = padCellAt(next.pads[unit.team], unit.pos);
+    if (col === null) continue; // unreachable: decided on the same post-movement state
+    if (unit.carrying !== null) placeOnPad(next, unit, col);
+    else liftFromPad(next, unit, col);
+  }
+
+  // Phase 6: open — progress running openings, then start new ones. canOpen is
+  // rechecked: phases 4-5 may have changed the pad or the opening state.
+  updateOpens(next);
+  for (const unit of next.units) {
+    const input = inputs.get(unit.id) ?? IDLE_INPUT;
+    if (input.open && openWins.has(unit.id) && canOpen(next, unit.id)) {
+      startOpen(next, unit.id);
+    }
+  }
+
+  // Phases 7-8: combat / respawn — no behaviour until Task 4.
 
   // Phase 9: crate spawns.
   updateCrateFalls(next);
@@ -90,4 +134,42 @@ function updateFacing(unit: Unit, input: UnitInput, move: Vec2): void {
     return;
   }
   if (move.x !== 0 || move.y !== 0) unit.facing = vecNormalize(move);
+}
+
+function otherTeam(team: Team): Team {
+  return team === 'fruit' ? 'dessert' : 'fruit';
+}
+
+function columnCrateCount(pad: Pad, col: number): number {
+  const column = pad.cells[col];
+  if (column === undefined) return 0;
+  let count = 0;
+  for (const crate of column) if (crate !== null) count++;
+  return count;
+}
+
+/** Phase 5: carried crate onto the own pad. 'full' keeps it carried (shake event only). */
+function placeOnPad(s: MatchState, unit: Unit, col: number): void {
+  const crateId = unit.carrying;
+  if (crateId === null) return;
+  const pad = s.pads[unit.team];
+  if (placeCrate(pad, col, crateId) === 'full') {
+    s.events.push({ tick: s.tick, kind: 'padFull', unitId: unit.id, team: unit.team, col });
+    return;
+  }
+  const crate = s.crates.find((c) => c.id === crateId);
+  if (crate !== undefined) {
+    crate.state = 'onPad';
+    crate.pos = padCellCenter(pad, col);
+  }
+  unit.carrying = null;
+}
+
+/** Phase 5: empty hands on an occupied own cell lifts the top crate (carry it). */
+function liftFromPad(s: MatchState, unit: Unit, col: number): void {
+  const crateId = liftTop(s.pads[unit.team], col);
+  if (crateId === null) return; // unreachable: phase 4 gates on an occupied column
+  unit.carrying = crateId;
+  const crate = s.crates.find((c) => c.id === crateId);
+  if (crate !== undefined) crate.state = 'carried';
 }
