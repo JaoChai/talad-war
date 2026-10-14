@@ -39,6 +39,16 @@ function giveCarriedCrate(s: MatchState, unitId: number, crateId: number): void 
   s.crates.push({ id: crateId, pos: { ...unit.pos }, state: 'carried', landTick: 0 });
 }
 
+/**
+ * These tests script every unit's input directly, so all starting units are
+ * pinned non-bot: step() must not let a bot override a scripted input
+ * (T5 rework decision A: keep the override semantics).
+ */
+function pinNoBots(s: MatchState): MatchState {
+  for (const unit of s.units) unit.isBot = false;
+  return s;
+}
+
 function putOnPad(s: MatchState, team: 'fruit' | 'dessert', col: number, crateId: number): void {
   must(s.pads[team].cells[col])[0] = crateId;
   s.crates.push({ id: crateId, pos: { x: 0, y: 0 }, state: 'onPad', landTick: 0 });
@@ -91,7 +101,7 @@ function runHeld(s: MatchState, steps: number, patches: Patches = []): RunResult
 
 describe('carrying blocks attacks', () => {
   it('fire and throwBomb do nothing while a unit is carrying', () => {
-    let s = createMatch(1);
+    let s = pinNoBots(createMatch(1));
     unitAt(s, 0, { x: 12, y: 12 });
     unitAt(s, 3, { x: 13, y: 12 }); // in slap range — still nothing may happen
     arm(s, 0);
@@ -107,7 +117,7 @@ describe('carrying blocks attacks', () => {
 
 describe('slap', () => {
   it('unarmed fire hits the nearest enemy unit within SLAP_RANGE', () => {
-    let s = createMatch(1);
+    let s = pinNoBots(createMatch(1));
     banishDessert(s);
     unitAt(s, 0, { x: 12, y: 12 });
     unitAt(s, 3, { x: 12.8, y: 12 }); // 0.8 away — nearest
@@ -121,7 +131,7 @@ describe('slap', () => {
   });
 
   it('unarmed fire hits the enemy stall when it is the closest target in range', () => {
-    let s = createMatch(1);
+    let s = pinNoBots(createMatch(1));
     banishDessert(s);
     unitAt(s, 0, { x: 35, y: 7 }); // 1.0 from the dessert stall rect
     s = step(s, inputsFor(s, [[0, { fire: true }]]));
@@ -132,7 +142,7 @@ describe('slap', () => {
   });
 
   it('respects SLAP_COOLDOWN_TICKS', () => {
-    const s = createMatch(1);
+    const s = pinNoBots(createMatch(1));
     unitAt(s, 0, { x: 12, y: 12 });
     unitAt(s, 3, { x: 13, y: 12 });
     const run = runHeld(s, 12, [[0, { fire: true }]]);
@@ -146,7 +156,7 @@ describe('slap', () => {
 
 describe('gun', () => {
   it('armed fire sends a bullet along the explicit aim even when it hits nobody', () => {
-    let s = createMatch(1);
+    let s = pinNoBots(createMatch(1));
     banishDessert(s);
     unitAt(s, 0, { x: 12, y: 12 });
     arm(s, 0);
@@ -163,7 +173,7 @@ describe('gun', () => {
   });
 
   it('armed fire with explicit aim at an enemy hits the first enemy unit', () => {
-    const s = createMatch(1);
+    const s = pinNoBots(createMatch(1));
     banishDessert(s);
     unitAt(s, 0, { x: 12, y: 12 });
     arm(s, 0);
@@ -176,7 +186,7 @@ describe('gun', () => {
   });
 
   it('armed fire with a null aim uses autoAimTarget', () => {
-    const s = createMatch(1);
+    const s = pinNoBots(createMatch(1));
     banishDessert(s);
     unitAt(s, 0, { x: 12, y: 12 });
     arm(s, 0);
@@ -186,7 +196,7 @@ describe('gun', () => {
   });
 
   it('a bullet blocked by an obstacle does no damage', () => {
-    const s = createMatch(1);
+    const s = pinNoBots(createMatch(1));
     banishDessert(s);
     unitAt(s, 0, { x: 12, y: 4.5 }); // shoots east through the (14,4)-(17,6) stall row
     arm(s, 0);
@@ -198,7 +208,7 @@ describe('gun', () => {
   });
 
   it('bullets pass through friendly units without hitting or blocking', () => {
-    const s = createMatch(1);
+    const s = pinNoBots(createMatch(1));
     banishDessert(s);
     unitAt(s, 0, { x: 12, y: 12 });
     unitAt(s, 1, { x: 13.5, y: 12 }); // friendly, right in the line of fire
@@ -210,7 +220,7 @@ describe('gun', () => {
   });
 
   it('a bullet into the own stall stops and does no damage', () => {
-    const s = createMatch(1);
+    const s = pinNoBots(createMatch(1));
     unitAt(s, 0, { x: 8, y: 17 }); // next to the fruit stall, shooting into it
     arm(s, 0);
     const run = runPulse(s, 6, [[0, { fire: true, aim: { x: 5, y: 20 } }]]);
@@ -220,7 +230,7 @@ describe('gun', () => {
   });
 
   it('a bullet into the enemy stall damages it and stops', () => {
-    const s = createMatch(1);
+    const s = pinNoBots(createMatch(1));
     banishDessert(s);
     unitAt(s, 0, { x: 35, y: 7 });
     arm(s, 0); // auto-aim falls back to the dessert stall centre
@@ -232,7 +242,7 @@ describe('gun', () => {
   });
 
   it('respects GUN_COOLDOWN_TICKS', () => {
-    const s = createMatch(1);
+    const s = pinNoBots(createMatch(1));
     banishDessert(s);
     unitAt(s, 0, { x: 12, y: 12 });
     arm(s, 0);
@@ -246,7 +256,7 @@ describe('gun', () => {
 
 describe('bombs', () => {
   it('throwBomb decrements bombs and explodes after the fuse, hitting the radius edge', () => {
-    let s = createMatch(1);
+    let s = pinNoBots(createMatch(1));
     banishDessert(s);
     unitAt(s, 0, { x: 12, y: 12 });
     must(s.units.find((u) => u.id === 0)).bombs = 3;
@@ -270,7 +280,7 @@ describe('bombs', () => {
   });
 
   it('a unit just outside BOMB_RADIUS takes no damage', () => {
-    const s = createMatch(1);
+    const s = pinNoBots(createMatch(1));
     banishDessert(s);
     unitAt(s, 0, { x: 12, y: 12 });
     must(s.units.find((u) => u.id === 0)).bombs = 1;
@@ -281,7 +291,7 @@ describe('bombs', () => {
   });
 
   it('throwBomb with no bombs does nothing', () => {
-    let s = createMatch(1);
+    let s = pinNoBots(createMatch(1));
     unitAt(s, 0, { x: 12, y: 12 });
     s = step(s, inputsFor(s, [[0, { throwBomb: true, aim: { x: 16, y: 12 } }]]));
     expect(s.projectiles).toHaveLength(0);
@@ -289,7 +299,7 @@ describe('bombs', () => {
   });
 
   it('an explosion next to the enemy stall damages it with BOMB_STALL_MULT', () => {
-    const s = createMatch(1);
+    const s = pinNoBots(createMatch(1));
     banishDessert(s);
     unitAt(s, 0, { x: 29, y: 7 }); // 5 from the aim point, inside BOMB_THROW_RANGE
     must(s.units.find((u) => u.id === 0)).bombs = 1;
@@ -301,7 +311,7 @@ describe('bombs', () => {
 
 describe('combat vs the Open! channel', () => {
   it('killing the opener with real combat damage cancels the open', () => {
-    let s = createMatch(5);
+    let s = pinNoBots(createMatch(5));
     putOnPad(s, 'fruit', 0, 100); // gun recipe on col 0
     unitAt(s, 0, { x: 8.75, y: 18.75 }); // fruit pad col 0 centre
     unitAt(s, 3, { x: 9.8, y: 18.75 }); // enemy standing on the pad, in slap range
@@ -320,7 +330,7 @@ describe('combat vs the Open! channel', () => {
   });
 
   it("a hit while carrying drops the crate at the unit's feet", () => {
-    let s = createMatch(1);
+    let s = pinNoBots(createMatch(1));
     unitAt(s, 0, { x: 12, y: 12 });
     unitAt(s, 3, { x: 13, y: 12 });
     giveCarriedCrate(s, 0, 900);
@@ -364,7 +374,7 @@ function toward(from: Vec2, to: Vec2): Vec2 {
  * deaths and respawns inside 3000 ticks — the traffic the hash must cover.
  */
 function runCombatScript(): { final: MatchState; counts: Record<string, number> } {
-  let s = createMatch(21);
+  let s = pinNoBots(createMatch(21));
   for (const unit of s.units) unit.bombs = 3;
   const counts = { hit: 0, explosion: 0, death: 0, respawn: 0 };
   for (let t = 0; t < 3000; t++) {

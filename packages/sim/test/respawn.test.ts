@@ -36,9 +36,19 @@ function inputsFor(
   return map;
 }
 
+/**
+ * These tests script every unit's input directly, so all starting units are
+ * pinned non-bot: step() must not let a bot override a scripted input
+ * (T5 rework decision A: keep the override semantics).
+ */
+function pinNoBots(s: MatchState): MatchState {
+  for (const unit of s.units) unit.isBot = false;
+  return s;
+}
+
 /** unit 0 stands at (12,12) one slap from death; unit 3 stands adjacent, firing once. */
 function mortallyWounded(): MatchState {
-  const s = createMatch(1);
+  const s = pinNoBots(createMatch(1));
   unitAt(s, 0, { x: 12, y: 12 });
   unitAt(s, 3, { x: 13, y: 12 });
   arm(s, 0);
