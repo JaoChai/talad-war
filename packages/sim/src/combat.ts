@@ -46,8 +46,9 @@ import type { MatchState, Projectile, Stall, Team, Unit, UnitInput, UnitId, Vec2
  * - hp <= 0: deadUntilTick = tick + RESPAWN_TICKS, gun/bombs cleared, carried
  *   crate dropped. Dead units do not move, act, block or get hit. Phase 8
  *   respawns them at their stall's first spawn slot, healed and unarmed.
- * - Q5: a stall at 0 HP ends the match for the other team; `step` then only
- *   advances the tick.
+ * - Q5: a stall at 0 HP ends the match for the other team; Q10: both stalls
+ *   reaching 0 HP in the same tick is a draw; `step` then only advances the
+ *   tick.
  *
  * Event conventions: `hit` {target, dmg} — target is a unit id (number) or a
  * stall team ('fruit' | 'dessert'); `explosion` {pos}; `death`/`respawn`
@@ -148,13 +149,15 @@ export function updateRespawns(s: MatchState): void {
   }
 }
 
-/** Phase 10: Q5 — a stall at 0 HP ends the match for the other team. */
+/** Phase 10: Q5 — a stall at 0 HP ends the match for the other team; Q10 — both
+ * stalls reaching 0 HP in the same tick is a draw. */
 export function updateWinner(s: MatchState): void {
   if (s.winner !== null) return;
-  // Mutual destruction in one tick is possible in principle; fruit dying wins
-  // the check (dessert wins) — arbitrary but deterministic.
-  if (s.stalls.fruit.hp <= 0) s.winner = 'dessert';
-  else if (s.stalls.dessert.hp <= 0) s.winner = 'fruit';
+  const fruitDown = s.stalls.fruit.hp <= 0;
+  const dessertDown = s.stalls.dessert.hp <= 0;
+  if (fruitDown && dessertDown) s.winner = 'draw';
+  else if (fruitDown) s.winner = 'dessert';
+  else if (dessertDown) s.winner = 'fruit';
   else return;
   s.events.push({ tick: s.tick, kind: 'matchOver', winner: s.winner });
 }

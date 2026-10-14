@@ -91,7 +91,8 @@ export interface MatchState {
   stalls: Record<Team, Stall>;
   projectiles: Projectile[];
   commands: Record<Team, SquadCommand>;
-  winner: Team | null;
+  /** Q10: 'draw' when both stalls reach 0 HP in the same tick. */
+  winner: Team | 'draw' | null;
   /** Only the latest tick's events (the client reads them for SFX/FX). */
   events: MatchEvent[];
   nextId: number;
