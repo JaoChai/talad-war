@@ -12,4 +12,6 @@ export interface TaladTestHooks {
   setSeed(seed: number): void;
   fastForward(ticks: number): void;
   setCommand(team: Team, cmd: SquadCommand): void;
+  /** Teleport a unit (review round 1 #1: deterministic staging, no chase loops). */
+  placeUnit(unitId: number, x: number, y: number): void;
 }

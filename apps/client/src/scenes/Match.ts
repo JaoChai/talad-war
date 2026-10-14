@@ -81,7 +81,17 @@ export class MatchScene extends Phaser.Scene {
           this.hud.sync(this.state);
         },
         setCommand: (team: Team, cmd: SquadCommand) => {
-          this.command = { [team]: cmd };
+          // Merge: callers park both teams one call at a time (overwriting the
+          // whole map silently un-guarded the other team — review round 1 #1).
+          this.command = { ...this.command, [team]: cmd };
+        },
+        placeUnit: (unitId: number, x: number, y: number) => {
+          const unit = this.state.units[unitId];
+          if (!unit) return;
+          unit.pos = { x, y };
+          this.prevState = structuredClone(this.state);
+          this.view.sync(this.prevState, this.state, 0);
+          this.hud.sync(this.state);
         },
       };
       (window as unknown as { __talad: TaladTestHooks }).__talad = hooks;

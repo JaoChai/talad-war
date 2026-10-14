@@ -8,6 +8,7 @@ export interface HookUnit {
   carrying: number | null;
   gun: unknown;
   bombs: number;
+  hp: number;
   deadUntilTick: number | null;
 }
 
@@ -28,6 +29,7 @@ declare global {
       setSeed(seed: number): void;
       fastForward(ticks: number): void;
       setCommand(team: 'fruit' | 'dessert', cmd: 'attack' | 'guard' | 'fetch' | null): void;
+      placeUnit(unitId: number, x: number, y: number): void;
     };
   }
 }

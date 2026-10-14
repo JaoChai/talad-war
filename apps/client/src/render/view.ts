@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
-import { DROP_FALL_TICKS, PAD_CELL_SIZE, STALL_MAX_HP } from '@talad/sim';
+import { DROP_FALL_TICKS, STALL_MAX_HP } from '@talad/sim';
 import type { Crate, MatchState, Team, Unit } from '@talad/sim';
-import { STAGE_SCALE, worldToStage } from './world';
+import { STAGE_SCALE, clampDrawY, padCellOffset, padCenterOffset, worldToStage } from './world';
 
 /** Team colour tokens approved in the Task 7 HUD mockup. */
 const TEAM_COLOURS: Record<Team, number> = { fruit: 0x2f7bff, dessert: 0xff4a3d };
@@ -106,10 +106,11 @@ export class MatchView {
       view.sprite.setVisible(!dead);
       view.ring.setVisible(!dead);
       if (dead) continue;
-      view.sprite.setPosition(at.x, at.y);
-      view.sprite.setDepth(Math.floor(at.y));
-      view.ring.setPosition(at.x, at.y - 2);
-      view.ring.setDepth(Math.floor(at.y) - 1);
+      const drawY = clampDrawY(at.y); // review round 1 #2: keep heads on-canvas
+      view.sprite.setPosition(at.x, drawY);
+      view.sprite.setDepth(Math.floor(drawY));
+      view.ring.setPosition(at.x, drawY - 2);
+      view.ring.setDepth(Math.floor(drawY) - 1);
       const hurt = now < view.hurtUntil;
       const frame = hurt
         ? HURT_FRAME
@@ -129,7 +130,12 @@ export class MatchView {
       const hx = hBefore ? Phaser.Math.Linear(hBefore.pos.x, human.pos.x, alpha) : human.pos.x;
       const hy = hBefore ? Phaser.Math.Linear(hBefore.pos.y, human.pos.y, alpha) : human.pos.y;
       const at = worldToStage({ x: hx, y: hy });
-      this.humanMarker.setPosition(at.x, at.y - UNIT_DISPLAY_HEIGHT - 6 + Math.sin(now / 250) * 3);
+      // Marker rides the clamped position and never leaves the canvas.
+      const baseY = clampDrawY(at.y);
+      this.humanMarker.setPosition(
+        at.x,
+        Math.max(baseY - UNIT_DISPLAY_HEIGHT - 6 + Math.sin(now / 250) * 3, 12),
+      );
       this.humanMarker.setVisible(true);
     } else {
       this.humanMarker.setVisible(false);
@@ -168,8 +174,8 @@ export class MatchView {
         this.padSprites.set(key, sprite);
       }
       const center = worldToStage({
-        x: pad.origin.x + 2 * PAD_CELL_SIZE,
-        y: pad.origin.y + 2 * PAD_CELL_SIZE,
+        x: pad.origin.x + padCenterOffset().x,
+        y: pad.origin.y + padCenterOffset().y,
       });
       sprite.setPosition(center.x, center.y);
     }
@@ -238,9 +244,8 @@ export class MatchView {
         const spot = padOf(crate);
         if (spot) {
           const pad = cur.pads[spot.team];
-          const cx = pad.origin.x + (spot.col % 4) * PAD_CELL_SIZE + PAD_CELL_SIZE / 2;
-          const cy = pad.origin.y + Math.floor(spot.col / 4) * PAD_CELL_SIZE + PAD_CELL_SIZE / 2;
-          at = worldToStage({ x: cx, y: cy });
+          const off = padCellOffset(spot.col); // mirrors sim pad.ts cell math
+          at = worldToStage({ x: pad.origin.x + off.x, y: pad.origin.y + off.y });
           if (spot.layer === 1) {
             view.sprite.setTexture('crate_stack2');
             at.y -= 22;

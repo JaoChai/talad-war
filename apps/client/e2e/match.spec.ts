@@ -4,14 +4,12 @@ import {
   getState,
   joyDriver,
   keyDriver,
-  nearestGroundCrate,
   padCrateCount,
   waitHooks,
   type Driver,
 } from './helpers';
 
 const PAD_COL0 = { x: 8.75, y: 18.75 }; // fruit pad column 0 center
-const MID_SOUTH = { x: 10, y: 14 }; // open corridor south of the market
 
 test.describe('match scene', () => {
   test('boots into a running 2-team match that ticks', async ({ page }) => {
@@ -76,7 +74,7 @@ test.describe('match scene', () => {
   test('carries a crate to the pad, preview shows the Thai recipe, Open! yields a gun', async ({
     page,
   }) => {
-    test.setTimeout(240_000);
+    test.setTimeout(90_000);
     const isMobile = test.info().project.name === 'mobile-landscape';
     await page.goto('/?seed=7');
     await waitHooks(page);
@@ -84,54 +82,45 @@ test.describe('match scene', () => {
       ? await joyDriver(page, await page.context().newCDPSession(page))
       : await keyDriver(page);
 
-    // Park every bot at home (guard) so the ferry run is not harassed; the sim
-    // drops a carried crate on ANY damage, so a stray sniper would otherwise
-    // keep resetting the run. Recovery from drops stays in the loop regardless.
-    await page.evaluate(() => window.__talad.setCommand('fruit', 'guard'));
-    await page.evaluate(() => window.__talad.setCommand('dessert', 'guard'));
-    await page.evaluate(() => window.__talad.fastForward(140));
+    // Review round 1 #1: deterministic staging through the hooks — everyone
+    // guards home, crates land, and the human teleports beside a landed crate
+    // near the own pad. No 150s ferry state machine; what remains is a short,
+    // seed-deterministic walk that still exercises pick → carry → drop → open.
+    await page.evaluate(() => {
+      window.__talad.setCommand('fruit', 'guard');
+      window.__talad.setCommand('dessert', 'guard');
+      window.__talad.fastForward(140);
+    });
+    const crate = await page.evaluate(() => {
+      const st = window.__talad.state();
+      const padC = { x: 8.75, y: 18.75 }; // fruit pad column 0 center
+      let best: { x: number; y: number } | null = null;
+      let bestD = Infinity;
+      for (const c of st.crates) {
+        if (c.state !== 'ground') continue;
+        const d = Math.hypot(c.pos.x - padC.x, c.pos.y - padC.y);
+        if (d < bestD) {
+          bestD = d;
+          best = c.pos;
+        }
+      }
+      return best;
+    });
+    expect(crate, 'a landed crate exists after fast-forward').not.toBeNull();
+    await page.evaluate((p) => window.__talad.placeUnit(0, p.x + 0.5, p.y), crate!);
 
-    // State machine: place a crate on the own pad — re-picking whenever a hit
-    // drops it (combat.ts drops carried crates on damage). Deterministic,
-    // bounded by the deadline below.
-    const deadline = Date.now() + 150_000;
-    let placed = false;
-    while (Date.now() < deadline && !placed) {
-      const st = await getState(page);
-      if (padCrateCount(st) >= 1) {
-        placed = true;
-        break;
-      }
-      const me = st.units[0]!;
-      if (me.deadUntilTick !== null) {
-        await driver.release();
-        await page.waitForTimeout(500);
-        continue;
-      }
-      if (me.carrying === null) {
-        const crate = nearestGroundCrate(st, me.pos);
-        if (!crate) {
-          await page.waitForTimeout(400);
-          continue;
-        }
-        const d = Math.hypot(crate.pos.x - me.pos.x, crate.pos.y - me.pos.y);
-        if (d > 0.55) {
-          await driveTo(page, driver, MID_SOUTH, { within: 1.2, budgetMs: 8_000 });
-          await driveTo(page, driver, crate.pos, { within: 0.55, budgetMs: 20_000 });
-          continue;
-        }
-        await driver.action();
-        await page.waitForTimeout(400);
-        continue;
-      }
-      // Carrying: haul to the own pad and place.
-      const ok = await driveTo(page, driver, PAD_COL0, { within: 0.5, budgetMs: 30_000 });
-      if (ok) {
-        await driver.action();
-        await page.waitForTimeout(700);
-      }
-    }
-    expect(placed, 'a crate reached the own pad').toBe(true);
+    await driver.action(); // pick up (E / Pick button)
+    await expect
+      .poll(async () => (await getState(page)).units[0]!.carrying, { timeout: 5_000 })
+      .not.toBeNull();
+
+    // Short straight haul to the own pad column; guard bots keep the lane clear.
+    const walked = await driveTo(page, driver, PAD_COL0, { within: 0.4, budgetMs: 12_000 });
+    expect(walked, 'walked the crate to the own pad column').toBe(true);
+    await driver.action(); // drop on the pad
+    await expect
+      .poll(async () => padCrateCount(await getState(page)), { timeout: 5_000 })
+      .toBeGreaterThanOrEqual(1);
 
     // The preview shows the Thai recipe text for 1 crate: a water gun.
     await expect(page.locator('.tw-preview')).toHaveText('จะได้: ปืนฉีดน้ำ', { timeout: 10_000 });
@@ -139,10 +128,8 @@ test.describe('match scene', () => {
     // Open! is available; on phone the button appears, on desktop E triggers it.
     if (isMobile) {
       await expect(page.locator('#tw-btn-open')).toBeVisible({ timeout: 10_000 });
-      await driver.open();
-    } else {
-      await driver.open();
     }
+    await driver.open();
     await expect
       .poll(
         async () => {
