@@ -273,7 +273,7 @@ function choosePadColumn(pad: Pad, needed: Recipe): number | null {
     if (column === undefined) continue;
     for (const crate of column) if (crate !== null) total++;
     if ((column[0] ?? null) !== null || (column[1] ?? null) !== null) candidates.push(col);
-    else candidates.unshift(col); // prefer ground-layer placements, lowest col first
+    else candidates.unshift(col); // empty cols first, highest col first among them (unshift while ascending) — ground spots stay open for the two-crate recipe; stacking cols come last
   }
   for (const col of candidates) {
     if (recipeAfterPlace(pad, col, total) === needed) return col;
@@ -312,7 +312,11 @@ function recipeAfterPlace(pad: Pad, col: number, total: number): Recipe | null {
   const grounds: number[] = [];
   for (let c = 0; c < pad.cells.length; c++) {
     const other = pad.cells[c];
-    if (other !== undefined && (other[0] ?? null) !== null) grounds.push(c);
+    // The placed crate itself lands on layer 0 of `col` when that ground is
+    // free — count it, or a one-crate pad can never reach the two-ground shape.
+    if (other !== undefined && ((other[0] ?? null) !== null || (c === col && groundFree))) {
+      grounds.push(c);
+    }
   }
   if (grounds.length !== 2) return null;
   const a = grounds[0] ?? -1;

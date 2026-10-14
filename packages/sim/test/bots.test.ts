@@ -60,6 +60,24 @@ describe('bots: squad commands (plan Task 5)', () => {
     expect(must(s.units[0]).gun).toEqual({ ammoCooldownTicks: 0 });
   });
 
+  it('fetch: with a gun already built, two ground crates become bombs within 45 s', () => {
+    let s = createMatch(5, { humanUnit: null });
+    s.units = s.units.filter((u) => u.id === 0); // the lone bot
+    must(s.units[0]).gun = { ammoCooldownTicks: 0 }; // teamNeeds -> bombs
+    s.crates.push({ id: 100, pos: { x: 20, y: 12 }, state: 'ground', landTick: 0 });
+    s.crates.push({ id: 101, pos: { x: 21, y: 12 }, state: 'ground', landTick: 0 });
+    s.nextId = 102;
+    const commands: Partial<Record<Team, SquadCommand>> = { fruit: 'fetch', dessert: null };
+    let opened: MatchEvent | undefined;
+    for (let t = 0; t < 900 && opened === undefined; t++) {
+      s = step(s, new Map(), commands);
+      opened = s.events.find(
+        (e) => e.kind === 'opened' && e.recipe === 'bombs' && e.team === 'fruit',
+      );
+    }
+    expect(opened).toBeDefined();
+  });
+
   it('guard: commanded bots stay within 6 units of their stall for 60 s', () => {
     let s = createMatch(7, { humanUnit: null });
     const commands: Partial<Record<Team, SquadCommand>> = { fruit: 'guard', dessert: 'guard' };
