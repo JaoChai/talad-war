@@ -1,8 +1,9 @@
 import { ARENA_H, ARENA_W, CARRY_SPEED, DT, UNIT_RADIUS, UNIT_SPEED } from './constants';
+import { updateProjectiles, processAttacks, updateRespawns, updateWinner } from './combat';
 import { spawnCrates, tryDrop, tryPick, updateCrateFalls } from './crates';
 import { clamp, vecClampLength, vecNormalize } from './geometry';
 import { isUnitWalkable } from './map';
-import { startOpen, updateOpens } from './open';
+import { startOpen, unitDead, updateOpens } from './open';
 import { canOpen, liftTop, padCellAt, padCellCenter, placeCrate } from './pad';
 import type { MatchState, Pad, SquadCommand, Team, Unit, UnitInput, UnitId, Vec2 } from './types';
 
@@ -41,12 +42,19 @@ export function step(
   next.tick += 1;
   next.events = [];
 
+  // Q5: the match is over — nothing changes but the tick (no movement, spawns
+  // or damage; `events` stays empty).
+  if (s.winner !== null) return next;
+
   // Phase 1: squad commands — no behaviour until Task 5.
   void commands;
   // Phase 2: bot inputs — no behaviour until Task 5.
 
-  // Phase 3: movement.
-  for (const unit of next.units) moveUnit(unit, inputs.get(unit.id) ?? IDLE_INPUT);
+  // Phase 3: movement (the dead do not move — Task 4 rule).
+  for (const unit of next.units) {
+    if (unitDead(unit)) continue;
+    moveUnit(unit, inputs.get(unit.id) ?? IDLE_INPUT);
+  }
 
   // Phases 4-5 share one decision: each pickDrop pulse performs exactly ONE action,
   // chosen here on the post-movement state. "Open wins if canOpen, else pickDrop
@@ -56,6 +64,7 @@ export function step(
   const venue = new Map<UnitId, 'ground' | 'pad'>();
   for (const unit of next.units) {
     const input = inputs.get(unit.id) ?? IDLE_INPUT;
+    if (unitDead(unit)) continue; // the dead do not act (Task 4 rule)
     if (input.open && canOpen(next, unit.id)) openWins.add(unit.id);
     if (!input.pickDrop || openWins.has(unit.id)) continue;
     if (padCellAt(next.pads[otherTeam(unit.team)], unit.pos) !== null) continue; // no stealing
@@ -98,13 +107,20 @@ export function step(
     }
   }
 
-  // Phases 7-8: combat / respawn — no behaviour until Task 4.
+  // Phase 7: combat — attacks (cooldowns, slaps, bullets, bombs), then projectile
+  // motion. Freshly spawned projectiles first act on the next tick.
+  const freshProjectiles = processAttacks(next, inputs);
+  updateProjectiles(next, freshProjectiles);
+
+  // Phase 8: respawn — heal the dead back at their stall once deadUntilTick arrives.
+  updateRespawns(next);
 
   // Phase 9: crate spawns.
   updateCrateFalls(next);
   spawnCrates(next);
 
-  // Phase 10: winner — no behaviour until Task 4.
+  // Phase 10: winner — stall destruction ends the match (Q5).
+  updateWinner(next);
 
   return next;
 }

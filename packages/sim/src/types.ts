@@ -30,6 +30,8 @@ export interface Unit {
   carrying: CrateId | null;
   gun: { ammoCooldownTicks: number } | null;
   bombs: number;
+  /** Ticks until the next unarmed slap may fire (Task 4). */
+  attackCooldownTicks: number;
   deadUntilTick: number | null;
 }
 
