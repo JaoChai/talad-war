@@ -2,8 +2,159 @@ html,
 body {
   margin: 0;
   height: 100%;
+  /* Letterbox bands around the FIT-scaled canvas match the night-market theme. */
+  background: #1b1030;
 }
 
 #app {
   height: 100%;
+}
+
+/* Match HUD overlay (Task 8 minimal controls + status; Task 9 expands).
+   Fixed to the SCREEN, not the letterboxed canvas. */
+.tw-hud-root {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  font-family: 'Noto Sans Thai', sans-serif;
+}
+
+.tw-hud-root > * {
+  pointer-events: auto;
+}
+
+.tw-joy-zone {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 48%;
+  height: 100%;
+  touch-action: none;
+}
+
+.tw-joy-base {
+  display: none;
+  position: absolute;
+  width: 128px;
+  height: 128px;
+  transform: translate(-50%, -50%);
+  border: 3px solid rgba(255, 255, 255, 0.55);
+  border-radius: 50%;
+  background: rgba(27, 16, 48, 0.35);
+  pointer-events: none;
+}
+
+.tw-joy-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #2f7bff;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.tw-btn {
+  position: absolute;
+  min-width: 64px;
+  min-height: 64px;
+  border: 3px solid rgba(255, 255, 255, 0.7);
+  border-radius: 50%;
+  background: rgba(27, 16, 48, 0.6);
+  color: #fff;
+  font-size: 19px;
+  font-weight: 700;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.tw-btn:disabled {
+  opacity: 0.4;
+}
+
+.tw-btn[hidden] {
+  display: none;
+}
+
+#tw-btn-fire {
+  right: 14px;
+  bottom: 14px;
+  width: 92px;
+  height: 92px;
+  min-width: 92px;
+  min-height: 92px;
+  background: rgba(255, 74, 61, 0.75);
+}
+
+#tw-btn-pick {
+  right: 118px;
+  bottom: 22px;
+}
+
+#tw-btn-throw {
+  right: 24px;
+  bottom: 122px;
+}
+
+#tw-btn-open {
+  right: 122px;
+  bottom: 108px;
+  background: rgba(255, 176, 32, 0.85);
+}
+
+.tw-throw-count {
+  position: absolute;
+  top: -6px;
+  right: -2px;
+  min-width: 24px;
+  padding: 1px 5px;
+  border-radius: 12px;
+  background: #ffb020;
+  color: #1b1030;
+  font-size: 15px;
+}
+
+.tw-preview {
+  position: fixed;
+  transform: translate(-50%, -120%);
+  padding: 4px 12px;
+  border-radius: 10px;
+  background: rgba(27, 16, 48, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: #fff;
+  font-size: 16px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 11;
+}
+
+.tw-preview[hidden] {
+  display: none;
+}
+
+.tw-winner {
+  position: fixed;
+  left: 50%;
+  top: 38%;
+  transform: translate(-50%, -50%);
+  font-size: 52px;
+  font-weight: 800;
+  color: #ffd75e;
+  text-shadow: 0 3px 10px #000;
+  pointer-events: none;
+  z-index: 12;
+}
+
+.tw-winner[hidden] {
+  display: none;
+}
+
+/* Controls only exist on touch devices; desktop uses WASD + mouse. */
+.tw-hud-root[data-touch='0'] .tw-joy-zone,
+.tw-hud-root[data-touch='0'] .tw-btn {
+  display: none;
 }
