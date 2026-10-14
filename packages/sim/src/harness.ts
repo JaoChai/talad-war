@@ -14,6 +14,8 @@ export interface BatchResult {
   medianSec: number;
   p90Sec: number;
   winRate: Record<Team, number>;
+  /** Q10: matches where both stalls died in the same tick — count for neither team. */
+  draws: number;
   timeouts: number;
   msPerTick: number;
 }
@@ -44,14 +46,16 @@ function quantile(sorted: number[], q: number): number {
 /**
  * Runs `games` all-bot matches (no human unit) with seeds seed0..seed0+games-1 and
  * returns balance stats. Same opts always produce an identical result except msPerTick,
- * which measures real host timing. A match that reaches maxMinutes counts as a timeout
- * draw: neither win rate includes it, and its duration counts as maxMinutes in the
+ * which measures real host timing. A match that reaches maxMinutes counts as a
+ * timeout; a Q10 match where both stalls die in the same tick counts as a draw;
+ * both are excluded from both win rates and their duration counts toward the
  * duration percentiles.
  */
 export function runBatch(opts: BatchOpts): BatchResult {
   const games = Math.max(1, Math.floor(opts.games));
   const maxTicks = Math.max(1, Math.floor(opts.maxMinutes * 60 * TICK_HZ));
   const wins: Record<Team, number> = { fruit: 0, dessert: 0 };
+  let draws = 0;
   let timeouts = 0;
   let ticks = 0;
   const durations: number[] = [];
@@ -64,6 +68,7 @@ export function runBatch(opts: BatchOpts): BatchResult {
       ticks++;
     }
     if (s.winner === null) timeouts++;
+    else if (s.winner === 'draw') draws++;
     else wins[s.winner]++;
     durations.push(s.tick / TICK_HZ);
   }
@@ -77,6 +82,7 @@ export function runBatch(opts: BatchOpts): BatchResult {
       fruit: wins.fruit / games,
       dessert: wins.dessert / games,
     },
+    draws,
     timeouts,
     msPerTick,
   };

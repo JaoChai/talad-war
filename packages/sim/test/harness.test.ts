@@ -7,6 +7,7 @@ const IN_BAND: BatchResult = {
   medianSec: 380,
   p90Sec: 470,
   winRate: { fruit: 0.52, dessert: 0.45 },
+  draws: 30,
   timeouts: 20,
   msPerTick: 0.4,
 };
@@ -16,6 +17,7 @@ const OUT_OF_BAND: BatchResult = {
   medianSec: 200,
   p90Sec: 250,
   winRate: { fruit: 0.7, dessert: 0.25 },
+  draws: 0,
   timeouts: 50,
   msPerTick: 0.9,
 };
@@ -31,10 +33,11 @@ describe('runBatch', () => {
     expect({ ...a, msPerTick: 0 }).toEqual({ ...b, msPerTick: 0 });
   });
 
-  it('counts a timeout at maxMinutes as a draw: win rates + timeouts sum the games', () => {
+  it('wins + draws + timeouts sum the games (draws count for neither team)', () => {
     const r = runBatch({ games: 5, seed0: 1, maxMinutes: 15 });
-    const decided = r.winRate.fruit + r.winRate.dessert;
-    expect(decided).toBeCloseTo((r.games - r.timeouts) / r.games, 10);
+    const buckets =
+      r.winRate.fruit + r.winRate.dessert + r.draws / r.games + r.timeouts / r.games;
+    expect(buckets).toBeCloseTo(1, 10);
   });
 });
 
