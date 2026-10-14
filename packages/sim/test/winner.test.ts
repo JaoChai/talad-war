@@ -41,7 +41,7 @@ function inputsFor(
 }
 
 /** One armed attacker beside the enemy stall, one bullet of stall HP left. */
-function stallAtOneHp(attacker: UnitId, team: 'fruit' | 'dessert'): MatchState {
+function stallAtOneHp(attacker: UnitId): MatchState {
   const s = createMatch(1);
   if (attacker < 3) {
     banishTeam(s, 'dessert', { x: 25, y: 1 }); // out of GUN_RANGE so the stall is targeted
@@ -58,7 +58,7 @@ function stallAtOneHp(attacker: UnitId, team: 'fruit' | 'dessert'): MatchState {
 
 describe('winner', () => {
   it('destroying the dessert stall ends the match for fruit', () => {
-    const s = stallAtOneHp(0, 'fruit');
+    const s = stallAtOneHp(0);
     const fired = step(s, inputsFor(s, [[0, { fire: true }]])); // bullet spawns
     const travel = step(fired, new Map()); // 0.9 units closer, not yet inside
     expect(travel.winner).toBeNull();
@@ -71,7 +71,7 @@ describe('winner', () => {
   });
 
   it('destroying the fruit stall ends the match for dessert', () => {
-    const s = stallAtOneHp(3, 'dessert');
+    const s = stallAtOneHp(3);
     let cur = step(s, inputsFor(s, [[3, { fire: true }]]));
     cur = step(cur, new Map());
     cur = step(cur, new Map());
@@ -83,7 +83,7 @@ describe('winner', () => {
   });
 
   it('after matchOver, 100 more steps change nothing but tick', () => {
-    let s = stallAtOneHp(0, 'fruit');
+    let s = stallAtOneHp(0);
     s = step(s, inputsFor(s, [[0, { fire: true }]]));
     s = step(s, new Map());
     s = step(s, new Map());

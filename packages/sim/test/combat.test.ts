@@ -132,7 +132,7 @@ describe('slap', () => {
   });
 
   it('respects SLAP_COOLDOWN_TICKS', () => {
-    let s = createMatch(1);
+    const s = createMatch(1);
     unitAt(s, 0, { x: 12, y: 12 });
     unitAt(s, 3, { x: 13, y: 12 });
     const run = runHeld(s, 12, [[0, { fire: true }]]);
@@ -163,7 +163,7 @@ describe('gun', () => {
   });
 
   it('armed fire with explicit aim at an enemy hits the first enemy unit', () => {
-    let s = createMatch(1);
+    const s = createMatch(1);
     banishDessert(s);
     unitAt(s, 0, { x: 12, y: 12 });
     arm(s, 0);
@@ -176,7 +176,7 @@ describe('gun', () => {
   });
 
   it('armed fire with a null aim uses autoAimTarget', () => {
-    let s = createMatch(1);
+    const s = createMatch(1);
     banishDessert(s);
     unitAt(s, 0, { x: 12, y: 12 });
     arm(s, 0);
@@ -186,7 +186,7 @@ describe('gun', () => {
   });
 
   it('a bullet blocked by an obstacle does no damage', () => {
-    let s = createMatch(1);
+    const s = createMatch(1);
     banishDessert(s);
     unitAt(s, 0, { x: 12, y: 4.5 }); // shoots east through the (14,4)-(17,6) stall row
     arm(s, 0);
@@ -198,7 +198,7 @@ describe('gun', () => {
   });
 
   it('bullets pass through friendly units without hitting or blocking', () => {
-    let s = createMatch(1);
+    const s = createMatch(1);
     banishDessert(s);
     unitAt(s, 0, { x: 12, y: 12 });
     unitAt(s, 1, { x: 13.5, y: 12 }); // friendly, right in the line of fire
@@ -210,7 +210,7 @@ describe('gun', () => {
   });
 
   it('a bullet into the own stall stops and does no damage', () => {
-    let s = createMatch(1);
+    const s = createMatch(1);
     unitAt(s, 0, { x: 8, y: 17 }); // next to the fruit stall, shooting into it
     arm(s, 0);
     const run = runPulse(s, 6, [[0, { fire: true, aim: { x: 5, y: 20 } }]]);
@@ -220,7 +220,7 @@ describe('gun', () => {
   });
 
   it('a bullet into the enemy stall damages it and stops', () => {
-    let s = createMatch(1);
+    const s = createMatch(1);
     banishDessert(s);
     unitAt(s, 0, { x: 35, y: 7 });
     arm(s, 0); // auto-aim falls back to the dessert stall centre
@@ -232,7 +232,7 @@ describe('gun', () => {
   });
 
   it('respects GUN_COOLDOWN_TICKS', () => {
-    let s = createMatch(1);
+    const s = createMatch(1);
     banishDessert(s);
     unitAt(s, 0, { x: 12, y: 12 });
     arm(s, 0);
@@ -270,7 +270,7 @@ describe('bombs', () => {
   });
 
   it('a unit just outside BOMB_RADIUS takes no damage', () => {
-    let s = createMatch(1);
+    const s = createMatch(1);
     banishDessert(s);
     unitAt(s, 0, { x: 12, y: 12 });
     must(s.units.find((u) => u.id === 0)).bombs = 1;
@@ -289,7 +289,7 @@ describe('bombs', () => {
   });
 
   it('an explosion next to the enemy stall damages it with BOMB_STALL_MULT', () => {
-    let s = createMatch(1);
+    const s = createMatch(1);
     banishDessert(s);
     unitAt(s, 0, { x: 29, y: 7 }); // 5 from the aim point, inside BOMB_THROW_RANGE
     must(s.units.find((u) => u.id === 0)).bombs = 1;

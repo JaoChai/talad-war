@@ -53,7 +53,6 @@ export function autoAimTarget(s: MatchState, unitId: UnitId): Vec2 | null {
   const d2 = dist2(unit.pos, nearestRectPoint(unit.pos, stall));
   if (d2 <= bestD2 && !(d2 === bestD2 && best !== null)) {
     best = { pos: stallCenter(otherTeam(unit.team)), isUnit: false };
-    bestD2 = d2;
   }
   return best === null ? null : { ...best.pos };
 }
