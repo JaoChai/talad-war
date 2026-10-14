@@ -1,0 +1,9 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "talad-war",
+  "account_id": "597f5be7a854697fad368e23dc391593",
+  "compatibility_date": "2026-10-02",
+  "assets": {
+    "not_found_handling": "single-page-application",
+  },
+}
