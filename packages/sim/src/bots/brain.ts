@@ -41,13 +41,15 @@ const VEER_TICKS = 40;
 
 /**
  * What one bot wants this tick: a movement target with an arrival radius, a mill
- * speed for the arrived state, and the action pulses. Everything is derived from
- * the state — a bot has no memory between ticks.
+ * speed for the arrived state, an explicit aim point (null = auto-aim), and the
+ * action pulses. Everything is derived from the state — a bot has no memory
+ * between ticks.
  */
 interface BotPlan {
   target: Vec2;
   arriveRadius: number;
   millSpeed: number;
+  aim: Vec2 | null;
   pickDrop: boolean;
   open: boolean;
   throwBomb: boolean;
@@ -56,26 +58,35 @@ interface BotPlan {
 /**
  * The input for bot unit `unitId` this tick (plan Task 5 contract). Pure and
  * deterministic: `s` is never mutated and the state's rng never advances (bots
- * use no randomness at all — their mill/veer patterns key on s.tick + unit id).
+ * use no randomness at all — their mill/veer/bomb patterns key on s.tick + the
+ * unit's index within its team, never on the global unit id, so the two teams
+ * play exact 180-degree mirror images of each other).
  */
 export function botInput(s: MatchState, unitId: UnitId): UnitInput {
   const unit = s.units.find((u) => u.id === unitId);
   if (unit === undefined || unitDead(unit)) return { ...IDLE_INPUT, move: { x: 0, y: 0 } };
   const goal = botGoal(s, unit.id);
+  const ti = teamIndexOf(s, unit);
   const plan =
     goal === 'fetch'
       ? fetchPlan(s, unit)
       : goal === 'guard'
         ? guardPlan(s, unit)
-        : attackPlan(s, unit);
+        : attackPlan(s, unit, ti);
   return {
-    move: steer(unit, plan, s.tick),
-    aim: null, // auto-aim: combat picks the target (nearest enemy unit, else stall)
+    move: steer(unit, plan, s.tick, ti),
+    aim: plan.aim, // explicit stall aim when the plan wants it, else auto-aim
     fire: autoAimTarget(s, unit.id) !== null,
     throwBomb: plan.throwBomb,
     pickDrop: plan.pickDrop,
     open: plan.open,
   };
+}
+
+/** Index of the unit among its own team's units (ascending id; stable across deaths). */
+function teamIndexOf(s: MatchState, unit: Unit): number {
+  const index = s.units.filter((u) => u.team === unit.team).findIndex((u) => u.id === unit.id);
+  return Math.max(0, index);
 }
 
 function fetchPlan(s: MatchState, unit: Unit): BotPlan {
@@ -87,6 +98,7 @@ function fetchPlan(s: MatchState, unit: Unit): BotPlan {
       target: { ...unit.pos },
       arriveRadius: 0.3,
       millSpeed: 0.35,
+      aim: null,
       pickDrop: false,
       open: false,
       throwBomb: false,
@@ -101,6 +113,7 @@ function fetchPlan(s: MatchState, unit: Unit): BotPlan {
         target: center,
         arriveRadius: 0.25,
         millSpeed: 0.3,
+        aim: null,
         pickDrop: padCellAt(pad, unit.pos) === col, // place once standing on the column
         open: false,
         throwBomb: false,
@@ -112,6 +125,7 @@ function fetchPlan(s: MatchState, unit: Unit): BotPlan {
       target: rectCenterOfPad(pad),
       arriveRadius: 1.0,
       millSpeed: 0.4,
+      aim: null,
       pickDrop: false,
       open: false,
       throwBomb: false,
@@ -124,6 +138,7 @@ function fetchPlan(s: MatchState, unit: Unit): BotPlan {
         target: { ...unit.pos },
         arriveRadius: 0.3,
         millSpeed: 0.35,
+        aim: null,
         pickDrop: false,
         open: true,
         throwBomb: false,
@@ -137,6 +152,7 @@ function fetchPlan(s: MatchState, unit: Unit): BotPlan {
       target: { x: CENTER_DROP_ZONE.x, y: CENTER_DROP_ZONE.y },
       arriveRadius: 3.5,
       millSpeed: 0.5,
+      aim: null,
       pickDrop: false,
       open: false,
       throwBomb: false,
@@ -147,24 +163,55 @@ function fetchPlan(s: MatchState, unit: Unit): BotPlan {
     target: { ...crate.pos },
     arriveRadius: 0.4,
     millSpeed: 0.5,
+    aim: null,
     pickDrop: dist2(unit.pos, crate.pos) <= reach,
     open: false,
     throwBomb: false,
   };
 }
 
+/** A guard engages enemies that push its stall closer than this to the stall centre. */
+const GUARD_CHASE_RADIUS = 3.0;
+
 function guardPlan(s: MatchState, unit: Unit): BotPlan {
+  const center = stallCenter(unit.team);
+  // Engage the nearest enemy pushing the stall (the plan scopes guard stillness
+  // to "while no enemy is near"); otherwise mill at the post. Team-index-safe:
+  // the choice keys on distances and the lower enemy id on exact ties, both of
+  // which are preserved under the 180-degree arena rotation.
+  let best: Unit | null = null;
+  let bestD2 = GUARD_CHASE_RADIUS * GUARD_CHASE_RADIUS;
+  for (const enemy of s.units) {
+    if (enemy.team === unit.team || unitDead(enemy)) continue;
+    const d2 = dist2(enemy.pos, center);
+    if (d2 > bestD2) continue;
+    if (d2 === bestD2 && best !== null && enemy.id > best.id) continue;
+    best = enemy;
+    bestD2 = d2;
+  }
+  if (best !== null) {
+    return {
+      target: { ...best.pos }, // close into slap range; fire pulses via auto-aim
+      arriveRadius: 0.2,
+      millSpeed: 0.6,
+      aim: null,
+      pickDrop: false,
+      open: false,
+      throwBomb: false,
+    };
+  }
   return {
-    target: stallCenter(unit.team),
+    target: center,
     arriveRadius: 1.5,
     millSpeed: 0.6,
+    aim: null,
     pickDrop: false,
     open: false,
     throwBomb: false,
   };
 }
 
-function attackPlan(s: MatchState, unit: Unit): BotPlan {
+function attackPlan(s: MatchState, unit: Unit, ti: number): BotPlan {
   const enemy = unit.team === 'fruit' ? 'dessert' : 'fruit';
   const rect = stallRect(enemy);
   const nr = nearestRectPoint(unit.pos, rect);
@@ -172,14 +219,30 @@ function attackPlan(s: MatchState, unit: Unit): BotPlan {
   const dy = unit.pos.y - nr.y;
   const d = Math.hypot(dx, dy);
   const armed = unit.gun !== null;
-  const holdDist = armed ? GUN_RANGE - 1.5 : SLAP_RANGE - 0.6;
-  const from = d > 1e-6 ? { x: dx / d, y: dy / d } : { x: 0, y: 1 };
-  const bombsReady = bombAtStall(s, unit, d);
+  // Bomb carriers close in first: the throw range is shorter than the gun range,
+  // and a carrier that holds at gun range never releases its bombs.
+  const holdDist =
+    unit.bombs > 0 ? BOMB_THROW_RANGE - 0.5 : armed ? GUN_RANGE - 1.5 : SLAP_RANGE - 0.6;
+  // Mirrored stand-in heading for the degenerate "standing exactly on the stall"
+  // case — negated for dessert so the two teams' headings stay mirror images.
+  const from =
+    d > 1e-6 ? { x: dx / d, y: dy / d } : unit.team === 'fruit' ? { x: 0, y: 1 } : { x: 0, y: -1 };
+  const bombsReady = bombAtStall(s, unit, d, ti);
+  // Ranged pressure on the stall (card t_38d70034): an armed attack bot in gun
+  // range with no enemy close enough to contest aims at the stall's nearest
+  // point instead of auto-aiming at the milling guard; bomb carriers about to
+  // throw aim there too, so the bomb lands on the stall rather than along the
+  // last walk direction.
+  const enemyNear = s.units.some(
+    (e) => e.team !== unit.team && !unitDead(e) && dist2(unit.pos, e.pos) <= (SLAP_RANGE * 2) ** 2,
+  );
+  const aim = (armed && d <= GUN_RANGE && !enemyNear) || bombsReady ? nr : null;
   if (d > holdDist + 0.4) {
     return {
       target: { x: nr.x + from.x * holdDist, y: nr.y + from.y * holdDist },
       arriveRadius: 0.5,
       millSpeed: 0.5,
+      aim,
       pickDrop: false,
       open: false,
       throwBomb: bombsReady,
@@ -189,16 +252,19 @@ function attackPlan(s: MatchState, unit: Unit): BotPlan {
     target: { ...unit.pos },
     arriveRadius: 0.3,
     millSpeed: armed ? 0.5 : 0.25, // slappers mill tighter to stay in slap range
+    aim,
     pickDrop: false,
     open: false,
     throwBomb: bombsReady,
   };
 }
 
-/** Space bomb throws 1.5 s apart so a 3-stack lasts, and only within throw range. */
-function bombAtStall(s: MatchState, unit: Unit, distToStall: number): boolean {
+/** Space bomb throws 3 s apart so a 3-stack lasts, and only within throw range. */
+function bombAtStall(s: MatchState, unit: Unit, distToStall: number, ti: number): boolean {
   if (unit.bombs <= 0 || distToStall > BOMB_THROW_RANGE - 0.5) return false;
-  return (s.tick + unit.id) % 30 === 0;
+  // Team index, not unit id: the two teams' carriers must throw on the same
+  // cadence or the mirror symmetry breaks.
+  return (s.tick + ti) % 60 === 0;
 }
 
 /**
@@ -207,23 +273,25 @@ function bombAtStall(s: MatchState, unit: Unit, distToStall: number): boolean {
  * fixed cadence, so obstacle faces are slid along and corners rounded without
  * pathfinding. On arrival the bot mills on a fixed deterministic pattern — it
  * never freezes (the stuck contract), but stays near its post via a weak pull.
+ * Both patterns key on the unit's team index (never its global id), and the
+ * dessert mill rotates its headings by 180 degrees, so the two teams steer as
+ * exact mirror images.
  */
-function steer(unit: Unit, plan: BotPlan, tick: number): Vec2 {
+function steer(unit: Unit, plan: BotPlan, tick: number, ti: number): Vec2 {
   const to = { x: plan.target.x - unit.pos.x, y: plan.target.y - unit.pos.y };
   const d = Math.hypot(to.x, to.y);
   if (d > plan.arriveRadius) {
-    const sign = (Math.floor(tick / VEER_TICKS) + unit.id) % 2 === 0 ? 1 : -1;
+    const sign = (Math.floor(tick / VEER_TICKS) + ti) % 2 === 0 ? 1 : -1;
     return vecNormalize({
       x: to.x / d - (to.y / d) * 0.45 * sign,
       y: to.y / d + (to.x / d) * 0.45 * sign,
     });
   }
-  const dir = MILL_DIRS[(Math.floor(tick / MILL_TICKS) + unit.id * 3) % MILL_DIRS.length] ?? {
-    x: 0,
-    y: 0,
-  };
+  const mill = MILL_DIRS[
+    (Math.floor(tick / MILL_TICKS) + ti * 3 + (unit.team === 'dessert' ? 4 : 0)) % MILL_DIRS.length
+  ] ?? { x: 0, y: 0 };
   const pull = d > 1e-6 ? { x: (to.x / d) * 0.25, y: (to.y / d) * 0.25 } : { x: 0, y: 0 };
-  return vecNormalize({ x: dir.x * plan.millSpeed + pull.x, y: dir.y * plan.millSpeed + pull.y });
+  return vecNormalize({ x: mill.x * plan.millSpeed + pull.x, y: mill.y * plan.millSpeed + pull.y });
 }
 
 /**
@@ -263,9 +331,23 @@ function nearestUnclaimedCrate(s: MatchState, pos: Vec2, claimed: Set<CrateId>):
  * The column whose placement moves the pad toward `needed`: first column that
  * completes `needed` exactly, else — for bombs/buddy, which start from an empty
  * pad — the first column that keeps the pad extensible (one crate down, recipe
- * still completable). Null when no placement helps (hold the crate).
+ * still completable). Null when no placement helps (hold the crate). Dessert
+ * resolves the choice in fruit-canonical column space and maps back (col c of
+ * one pad is the 180-degree rotation of col 3-c of the other), so both teams
+ * build the same mirrored shape.
  */
 function choosePadColumn(pad: Pad, needed: Recipe): number | null {
+  if (pad.team === 'dessert') {
+    const canonical: Pad = {
+      ...pad,
+      team: 'fruit', // resolve in fruit-canonical space; never recurse back into this branch
+      cells: pad.cells.map((_, i) => [
+        ...((pad.cells[pad.cells.length - 1 - i] ?? []) as Array<CrateId | null>),
+      ]),
+    };
+    const col = choosePadColumn(canonical, needed);
+    return col === null ? null : pad.cells.length - 1 - col;
+  }
   let total = 0;
   const candidates: number[] = [];
   for (let col = 0; col < pad.cells.length; col++) {

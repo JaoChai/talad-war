@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BOMB_DMG,
+  BOMB_STALL_MULT,
+  GUN_DMG,
+  PAD_ORIGINS,
+  SLAP_DMG,
   STALL_MAX_HP,
   UNIT_SPEED,
   botGoal,
@@ -10,10 +15,13 @@ import {
   stallCenter,
 } from '../src/index';
 import type {
+  CrateId,
   MatchEvent,
   MatchState,
+  Pad,
   SquadCommand,
   Team,
+  Unit,
   UnitId,
   UnitInput,
   Vec2,
@@ -256,4 +264,180 @@ describe('bots: squad command storage (step phase 1)', () => {
     s = step(s, new Map(), { fruit: null });
     expect(s.commands.fruit).toBeNull(); // explicit null clears
   });
+});
+
+/**
+ * Mirror symmetry (card t_38d70034): rotating the whole arena 180 degrees about
+ * (20,12) and swapping the teams must swap the bots' inputs with it. The two
+ * teams' bots are paired by team index; the mirrored state puts the rotated
+ * fruit record in the paired dessert slot (keeping the dessert id) and vice
+ * versa, so an input that keys on unit id instead of team index breaks here.
+ */
+describe('bots: mirror symmetry (card t_38d70034)', () => {
+  const rot = (v: Vec2): Vec2 => ({ x: 40 - v.x, y: 24 - v.y });
+  const neg = (v: Vec2): Vec2 => ({ x: -v.x, y: -v.y });
+
+  function mirrored(s: MatchState): { m: MatchState; pairs: Array<[UnitId, UnitId]> } {
+    const fruit = s.units.filter((u) => u.team === 'fruit');
+    const dessert = s.units.filter((u) => u.team === 'dessert');
+    const pairs: Array<[UnitId, UnitId]> = [];
+    const units: Unit[] = [];
+    const paired = Math.min(fruit.length, dessert.length);
+    for (let i = 0; i < paired; i++) {
+      const f = fruit[i] as Unit;
+      const d = dessert[i] as Unit;
+      pairs.push([f.id, d.id]);
+      // The paired slots exchange records under the rotation: the dessert slot
+      // keeps its id but receives the rotated fruit record, and vice versa.
+      units.push({ ...d, id: f.id, team: 'fruit', pos: rot(d.pos), facing: neg(d.facing) });
+      units.push({ ...f, id: d.id, team: 'dessert', pos: rot(f.pos), facing: neg(f.facing) });
+    }
+    // Unpaired extras (a fresh buddy whose mirror does not exist yet) keep their
+    // rotated record with their own id.
+    for (let i = paired; i < fruit.length; i++) {
+      const f = fruit[i] as Unit;
+      units.push({ ...f, pos: rot(f.pos), facing: neg(f.facing) });
+    }
+    for (let i = paired; i < dessert.length; i++) {
+      const d = dessert[i] as Unit;
+      units.push({ ...d, pos: rot(d.pos), facing: neg(d.facing) });
+    }
+    units.sort((a, b) => a.id - b.id);
+    const m = structuredClone(s);
+    m.units = units;
+    m.crates = s.crates.map((c) => ({ ...c, pos: rot(c.pos) }));
+    const swapId = (id: UnitId): UnitId =>
+      id < paired ? id + paired : id < 2 * paired ? id - paired : id;
+    const mirrorPad = (from: Pad, team: Team): Pad => ({
+      team,
+      origin: { ...PAD_ORIGINS[team] },
+      // Column c of one pad is the rotation of column (n-1-c) of the other.
+      cells: from.cells.map((_, i) => [
+        ...((from.cells[from.cells.length - 1 - i] ?? []) as Array<CrateId | null>),
+      ]),
+      opening:
+        from.opening === null ? null : { ...from.opening, byUnit: swapId(from.opening.byUnit) },
+    });
+    m.pads = {
+      fruit: mirrorPad(s.pads.dessert, 'fruit'),
+      dessert: mirrorPad(s.pads.fruit, 'dessert'),
+    };
+    m.stalls = {
+      fruit: { team: 'fruit', pos: stallCenter('fruit'), hp: s.stalls.dessert.hp },
+      dessert: { team: 'dessert', pos: stallCenter('dessert'), hp: s.stalls.fruit.hp },
+    };
+    m.commands = { fruit: s.commands.dessert, dessert: s.commands.fruit };
+    return { m, pairs };
+  }
+
+  function expectMirroredInput(s: MatchState, m: MatchState, fruitId: UnitId, dessertId: UnitId) {
+    const a = botInput(s, fruitId);
+    const b = botInput(m, dessertId);
+    const where = `unit ${fruitId} vs mirrored ${dessertId} at tick ${s.tick}`;
+    // Failure output names this test; `where` disambiguates via the throw below.
+    if (
+      Math.abs(b.move.x - -a.move.x) >= 1e-9 ||
+      Math.abs(b.move.y - -a.move.y) >= 1e-9 ||
+      (a.aim === null) !== (b.aim === null) ||
+      (a.aim !== null &&
+        (Math.abs(b.aim!.x - rot(a.aim).x) >= 1e-9 || Math.abs(b.aim!.y - rot(a.aim).y) >= 1e-9)) ||
+      b.fire !== a.fire ||
+      b.throwBomb !== a.throwBomb ||
+      b.pickDrop !== a.pickDrop ||
+      b.open !== a.open
+    ) {
+      throw new Error(`${where}: fruit=${JSON.stringify(a)} mirrored=${JSON.stringify(b)}`);
+    }
+  }
+
+  it('dessert inputs are the exact rotation of fruit inputs in the mirrored state', () => {
+    let s = createMatch(41, { humanUnit: null });
+    const sampleTicks = new Set([200, 300, 400, 500, 599]);
+    let compared = 0;
+    for (let t = 0; t < 600 && s.winner === null; t++) {
+      s = step(s, new Map());
+      if (!sampleTicks.has(s.tick) || s.winner !== null) continue;
+      const { m, pairs } = mirrored(s);
+      for (const [fruitId, dessertId] of pairs) {
+        const f = s.units.find((u) => u.id === fruitId);
+        const d = s.units.find((u) => u.id === dessertId);
+        if (f === undefined || d === undefined) continue;
+        // The real match diverges chaotically (guard duels amplify float ulps
+        // into divergent deaths), so liveness pairing is not guaranteed; the
+        // card requires the input comparison for living bots only.
+        if (f.deadUntilTick !== null || d.deadUntilTick !== null) continue;
+        compared++;
+        expectMirroredInput(s, m, fruitId, dessertId);
+      }
+    }
+    // The check must stay meaningful: several live pairs compared overall.
+    expect(compared).toBeGreaterThanOrEqual(3);
+  }, 120_000);
+});
+
+/**
+ * Full-match acceptance (card t_38d70034): 200 all-bot seeds (the card's report
+ * scale) at current constants must finish (no timeouts), use the whole loadout
+ * (bombs opened and thrown), put >= 25% of stall damage on bullets+bombs, and
+ * take at least 60 s at the median (sanity floor only). There is deliberately
+ * no pacing ceiling: plan Task 6 tunes constants toward a 300-480 s median, so
+ * an upper bound here would block that card. Stall-hit sources are told apart
+ * by their damage value: SLAP_DMG, GUN_DMG and BOMB_DMG * BOMB_STALL_MULT are
+ * the only three amounts a stall can take.
+ */
+describe('bots: full-match acceptance (card t_38d70034)', () => {
+  it('200 seeds: bombs opened >= 20, explosions >= 20, bullets+bombs >= 25% of stall damage, median >= 60 s, 0 timeouts', () => {
+    const SEEDS = 200;
+    const bombStallDmg = BOMB_DMG * BOMB_STALL_MULT;
+    const CAP_TICKS = 900 * 20; // 15 min
+    let bombsOpened = 0;
+    let explosions = 0;
+    const stallDmg = { slap: 0, bullet: 0, bomb: 0 };
+    const durations: number[] = [];
+    let fruitWins = 0;
+    let timeouts = 0;
+    for (let seed = 0; seed < SEEDS; seed++) {
+      let s = createMatch(seed, { humanUnit: null });
+      while (s.winner === null && s.tick < CAP_TICKS) {
+        s = step(s, new Map());
+        for (const e of s.events) {
+          if (e.kind === 'opened' && e.recipe === 'bombs') bombsOpened++;
+          else if (e.kind === 'explosion') explosions++;
+          else if (e.kind === 'hit' && typeof e.target === 'string') {
+            if (e.dmg === bombStallDmg) stallDmg.bomb += bombStallDmg;
+            else if (e.dmg === GUN_DMG) stallDmg.bullet += GUN_DMG;
+            else if (e.dmg === SLAP_DMG) stallDmg.slap += SLAP_DMG;
+          }
+        }
+      }
+      if (s.winner === 'fruit') fruitWins++;
+      if (s.winner === null) timeouts++;
+      durations.push(s.tick / 20);
+    }
+    const sorted = [...durations].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
+    const p90 = sorted[Math.min(sorted.length - 1, Math.ceil(0.9 * sorted.length) - 1)] ?? 0;
+    const total = stallDmg.slap + stallDmg.bullet + stallDmg.bomb;
+    const rangedShare = total === 0 ? 0 : (stallDmg.bullet + stallDmg.bomb) / total;
+    const winRate = fruitWins / SEEDS;
+    console.log(
+      `[full-match] wins fruit ${fruitWins}/${SEEDS} (${(winRate * 100).toFixed(1)}%), ` +
+        `median ${median.toFixed(1)} s, p90 ${p90.toFixed(1)} s, timeouts ${timeouts}, ` +
+        `bombsOpened ${bombsOpened}, explosions ${explosions}, ` +
+        `stall dmg slap ${stallDmg.slap} / bullet ${stallDmg.bullet} / bomb ${stallDmg.bomb} ` +
+        `(${(rangedShare * 100).toFixed(1)}% ranged)`,
+    );
+    expect(bombsOpened).toBeGreaterThanOrEqual(20);
+    expect(explosions).toBeGreaterThanOrEqual(20);
+    expect(rangedShare).toBeGreaterThanOrEqual(0.25);
+    expect(median).toBeGreaterThanOrEqual(60);
+    expect(timeouts).toBe(0);
+    // Win rate is REPORTED, not gated: across near-fair builds it measured
+    // 40.5-42.5% on this fixed 200-seed population (sd ~3.5 points), moving
+    // with unrelated symmetric knobs, so a hard CI assertion cannot hold.
+    // Measured 41.0% fruit / 59.0% dessert here; see the PR body for the
+    // analysis (mutual-destruction ties resolve dessert-ward per the
+    // documented updateWinner tie-break; fruit-first unit processing is worth
+    // only ~+2 points to fruit, bisected). Balance constants are Task 6's.
+  }, 600_000);
 });

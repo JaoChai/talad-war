@@ -11,14 +11,21 @@ export type BotGoal = 'attack' | 'guard' | 'fetch';
  * with `null`, the default role goes by the unit's index among its team's LIVING
  * bots (ascending id): 1st fetch, 2nd guard, 3rd+ attack. An all-bot team (the
  * enemy side of a human match, or either side of a bot-vs-bot match) additionally
- * switches its whole team to `attack` once its living units hold >= 2 guns.
+ * switches its whole team to `attack` once its living units hold >= 2 guns, and
+ * any living bomb carrier attacks regardless of its default role — a loadout
+ * sitting on the fetcher is wasted, and the attack phase is what throws it;
+ * when the bombs run out the carrier falls back to its default role (usually
+ * fetch) and rebuilds.
  */
 export function botGoal(s: MatchState, unitId: UnitId): BotGoal {
   const unit = s.units.find((u) => u.id === unitId);
   if (unit === undefined) return 'guard';
   const command: SquadCommand = s.commands[unit.team];
   if (command !== null) return command;
-  if (allBotTeam(s, unit.team) && livingGunCount(s, unit.team) >= 2) return 'attack';
+  if (allBotTeam(s, unit.team)) {
+    if (livingGunCount(s, unit.team) >= 2) return 'attack'; // plan Task 5's whole-team switch
+    if (unit.bombs > 0) return 'attack'; // the carrier must deliver its bombs to the stall
+  }
   return defaultGoal(s, unit);
 }
 
