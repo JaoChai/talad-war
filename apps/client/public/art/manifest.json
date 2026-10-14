@@ -1,0 +1,212 @@
+{
+  "cell": 256,
+  "characters": {
+    "fruit_mangosteen": {
+      "file": "fruit_mangosteen.webp",
+      "frameWidth": 256,
+      "frameHeight": 256,
+      "frames": [
+        "idle",
+        "run",
+        "carry",
+        "hurt"
+      ],
+      "anchor": [
+        0.5,
+        0.984375
+      ]
+    },
+    "fruit_rambutan": {
+      "file": "fruit_rambutan.webp",
+      "frameWidth": 256,
+      "frameHeight": 256,
+      "frames": [
+        "idle",
+        "run",
+        "carry",
+        "hurt"
+      ],
+      "anchor": [
+        0.5,
+        0.984375
+      ]
+    },
+    "fruit_durian": {
+      "file": "fruit_durian.webp",
+      "frameWidth": 256,
+      "frameHeight": 256,
+      "frames": [
+        "idle",
+        "run",
+        "carry",
+        "hurt"
+      ],
+      "anchor": [
+        0.5,
+        0.984375
+      ]
+    },
+    "fruit_longan": {
+      "file": "fruit_longan.webp",
+      "frameWidth": 256,
+      "frameHeight": 256,
+      "frames": [
+        "idle",
+        "run",
+        "carry",
+        "hurt"
+      ],
+      "anchor": [
+        0.5,
+        0.984375
+      ]
+    },
+    "dessert_khanomkrok": {
+      "file": "dessert_khanomkrok.webp",
+      "frameWidth": 256,
+      "frameHeight": 256,
+      "frames": [
+        "idle",
+        "run",
+        "carry",
+        "hurt"
+      ],
+      "anchor": [
+        0.5,
+        0.984375
+      ]
+    },
+    "dessert_thongyod": {
+      "file": "dessert_thongyod.webp",
+      "frameWidth": 256,
+      "frameHeight": 256,
+      "frames": [
+        "idle",
+        "run",
+        "carry",
+        "hurt"
+      ],
+      "anchor": [
+        0.5,
+        0.984375
+      ]
+    },
+    "dessert_lookchup": {
+      "file": "dessert_lookchup.webp",
+      "frameWidth": 256,
+      "frameHeight": 256,
+      "frames": [
+        "idle",
+        "run",
+        "carry",
+        "hurt"
+      ],
+      "anchor": [
+        0.5,
+        0.984375
+      ]
+    },
+    "dessert_khanomchan": {
+      "file": "dessert_khanomchan.webp",
+      "frameWidth": 256,
+      "frameHeight": 256,
+      "frames": [
+        "idle",
+        "run",
+        "carry",
+        "hurt"
+      ],
+      "anchor": [
+        0.5,
+        0.984375
+      ]
+    }
+  },
+  "props": {
+    "crate": {
+      "file": "prop_crate.webp",
+      "width": 217,
+      "height": 167
+    },
+    "crate_air": {
+      "file": "prop_crate_air.webp",
+      "width": 159,
+      "height": 151
+    },
+    "crate_stack2": {
+      "file": "prop_crate_stack2.webp",
+      "width": 183,
+      "height": 190
+    },
+    "stall_fruit_ok": {
+      "file": "prop_stall_fruit_ok.webp",
+      "width": 358,
+      "height": 218
+    },
+    "stall_fruit_damaged": {
+      "file": "prop_stall_fruit_damaged.webp",
+      "width": 383,
+      "height": 222
+    },
+    "stall_fruit_destroyed": {
+      "file": "prop_stall_fruit_destroyed.webp",
+      "width": 443,
+      "height": 195
+    },
+    "stall_dessert_ok": {
+      "file": "prop_stall_dessert_ok.webp",
+      "width": 377,
+      "height": 215
+    },
+    "stall_dessert_damaged": {
+      "file": "prop_stall_dessert_damaged.webp",
+      "width": 391,
+      "height": 206
+    },
+    "stall_dessert_destroyed": {
+      "file": "prop_stall_dessert_destroyed.webp",
+      "width": 484,
+      "height": 188
+    },
+    "pad_fruit": {
+      "file": "prop_pad_fruit.webp",
+      "width": 311,
+      "height": 153
+    },
+    "pad_dessert": {
+      "file": "prop_pad_dessert.webp",
+      "width": 309,
+      "height": 156
+    },
+    "pad_tile_glow": {
+      "file": "prop_pad_tile_glow.webp",
+      "width": 214,
+      "height": 116
+    },
+    "shot_fruit": {
+      "file": "prop_shot_fruit.webp",
+      "width": 256,
+      "height": 87
+    },
+    "shot_dessert": {
+      "file": "prop_shot_dessert.webp",
+      "width": 256,
+      "height": 107
+    },
+    "bomb": {
+      "file": "prop_bomb.webp",
+      "width": 153,
+      "height": 161
+    },
+    "explosion": {
+      "file": "prop_explosion.webp",
+      "width": 256,
+      "height": 163
+    }
+  },
+  "arena": {
+    "file": "arena_market.webp",
+    "width": 1920,
+    "height": 1080
+  }
+}
