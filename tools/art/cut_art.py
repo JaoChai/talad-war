@@ -42,7 +42,7 @@ def key_alpha(rgb, key, tol=28, pocket_tol=None):
         m = lab[sl] == i
         neutral = chroma[sl][m].mean() <= 4 and d[sl][m].mean() <= 10
         keyish = pocket_tol is not None and d[sl][m].mean() <= pocket_tol
-        if m.sum() >= 40 and (neutral or keyish):
+        if (neutral and m.sum() >= 150) or (keyish and m.sum() >= 40):
             bg[sl] |= m
     a = np.where(bg, 0, 255).astype(np.uint8)
     a[ndi.binary_opening(a > 0, iterations=1) == 0] = 0  # drop 1px specks
@@ -69,6 +69,24 @@ def magenta_clean(rgba):
     keep = ndi.binary_opening(rgba[..., 3] > 0, iterations=1)
     rgba[~keep, 3] = 0
     return rgba
+
+
+def tidy_alpha(img, max_hole=120, min_speck=30):
+    """After resizing: binarise alpha, fill small enclosed holes, drop tiny floating specks."""
+    a = np.array(img)
+    solid = a[..., 3] >= 128
+    hl, hn = ndi.label(ndi.binary_fill_holes(solid) & ~solid)
+    if hn:
+        sizes = ndi.sum(np.ones_like(solid), hl, range(1, hn + 1))
+        small = np.isin(hl, [i + 1 for i, s in enumerate(sizes) if s <= max_hole])
+        a[small, :3] = ndi.grey_dilation(a[..., :3], size=(3, 3, 1))[small]
+        solid |= small
+    sl, sn = ndi.label(solid)
+    if sn:
+        sizes = ndi.sum(solid, sl, range(1, sn + 1))
+        solid &= ~np.isin(sl, [i + 1 for i, s in enumerate(sizes) if s < min_speck])
+    a[..., 3] = np.where(solid, 255, 0)
+    return Image.fromarray(a, "RGBA")
 
 
 def objects(alpha, dilate, min_area):
@@ -108,6 +126,7 @@ for name in CHARS:
         x = k * CELL + (CELL - img.width) // 2
         y = CELL - 4 - img.height  # feet on a shared baseline
         sheet.alpha_composite(img, (x, y))
+    sheet = tidy_alpha(sheet)
     f = OUT / f"{name}.webp"
     sheet.save(f, "WEBP", quality=82, method=6)
     manifest["characters"][name] = {"file": f.name, "frameWidth": CELL, "frameHeight": CELL,
