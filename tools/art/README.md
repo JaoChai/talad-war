@@ -10,7 +10,7 @@ Owner-approved concept sheets (2026-10-14) are cut into game files under `apps/c
 - Sources (not committed, 2+ MB each): `~/Code/team-buddies-art-staging/task7-w1/props.png`, `task7-w2/*.png`.
 - Needs Python with numpy, scipy, pillow (WebP).
 
-Budget: all of `public/art` <= 3 MB (currently ~0.93 MB).
+Budget: all of `public/art` <= 3 MB (currently ~0.78 MB).
 
 Known art notes for Task 8: the crate drawn in the `carry` frames varies per character; draw `prop_crate.webp` over
 the carry frame if a uniform crate is wanted. `fruit_longan` and `dessert_khanomchan` are the buddy units — scale them
