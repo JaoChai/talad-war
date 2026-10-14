@@ -58,3 +58,36 @@ describe('determinism', () => {
     expect(first).toEqual(second);
   });
 });
+
+/** Scripted pad activity: movement + pickDrop pulses (place/lift) + open pulses. */
+function padInputFor(tick: number): UnitInput {
+  return {
+    move: must(DIRS[tick % DIRS.length]),
+    aim: null,
+    fire: false,
+    throwBomb: false,
+    pickDrop: tick % 37 === 0,
+    open: tick % 211 === 0,
+  };
+}
+
+function runPadScript(): MatchState {
+  let s = createMatch(11);
+  for (let t = 0; t < 2000; t++) {
+    const inputs = new Map<UnitId, UnitInput>();
+    for (const id of UNIT_IDS) inputs.set(id, padInputFor(t));
+    s = step(s, inputs);
+  }
+  return s;
+}
+
+describe('determinism with pad traffic', () => {
+  it('2000 scripted place/lift/open ticks from seed 11, run twice, produce an identical stateHash', () => {
+    const first = runPadScript();
+    const second = runPadScript();
+    expect(first.tick).toBe(2000);
+    expect(first.winner).toBeNull();
+    expect(stateHash(first)).toBe(stateHash(second));
+    expect(first).toEqual(second);
+  });
+});

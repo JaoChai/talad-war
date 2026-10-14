@@ -29,6 +29,11 @@ export const PAD_CELL_SIZE = 1.5;
 export const PAD_FLOOR = 2; // 2x2 floor cells -> 4 pad columns
 export const PAD_LAYERS = 2; // cells[col][layer 0..1]
 
+/** Task 3: recipes and the Open! channel (1.0 s at 20 Hz). */
+export const OPEN_TICKS = 20;
+export const BOMBS_PER_RECIPE = 3; // the bombs recipe refills to this
+export const TEAM_CAP = 5; // max units per team, alive + dead
+
 export const STALL_RECTS: Record<Team, Rect> = {
   fruit: { minX: 3, minY: 18, maxX: 7, maxY: 22 },
   dessert: { minX: 33, minY: 2, maxX: 37, maxY: 6 }, // exact 180° rotation of fruit's

@@ -6,6 +6,8 @@ export * from './crates';
 export * from './geometry';
 export * from './hash';
 export * from './map';
+export * from './open';
+export * from './pad';
 export * from './rng';
 export * from './setup';
 export * from './step';
