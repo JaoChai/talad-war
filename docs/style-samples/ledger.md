@@ -1,0 +1,11 @@
+# Team-Buddies-like new game — brainstorm ledger
+- 2026-10-14 Q1 first playable mode: A (local vs bots first, online later via shared engine). Owner answered "Ok" to recommendation.
+- 2026-10-14 Q2 art/theme: A (generate same-scene samples in 3 styles: market / tabletop toys / backyard pets, owner picks after seeing). Owner "Ok".
+- 2026-10-14 Q3 style: A Thai night-market war (fruit team vs Thai-dessert team, wooden fruit crates, stall bases, 2D glossy cartoon). Owner "A".
+- 2026-10-14 Q4 platform: A mobile-first (left virtual joystick, right 2 big buttons pick/drop + fire with auto-aim nearest), desktop WASD+mouse also supported. Owner "A".
+- 2026-10-14 Q5 win condition: A destroy enemy stall/base (base gone = cannot build). Owner "A". Playback of assumptions (5-8 min, recipes 1=gun/2 side=bomb/vertical=buddy, ghost preview, 1 map 2 teams x3) shown, no objection yet.
+- 2026-10-14 Q6 teammates: A bots act on their own + 3 squad command buttons (Attack / Guard stall / Fetch crates), no character switching. Owner "A".
+- 2026-10-14 Q7 retention: A v1 = short standalone match, no login, results screen + Play again; unlocks/stats/accounts later with online. Owner "Ok".
+- 2026-10-14 Q8 placement: A stand-on-cell (empty=ground, occupied=stack), glow+preview, empty-hand lift top crate, separate Open! button only on valid recipe. Q9 loadout: A gun slot + bomb slot (Throw btn w/ count), death loses all. Owner "Ok". Builder check done (2 questions, both answered).
+- 2026-10-14 DESIGN APPROVED by owner ("A"). Next: writing-plans.
+- 2026-10-14 PLAN written: ~/Code/team-buddies-art-staging/docs/plans/2026-10-14-talad-war-v1.md (11 tasks). Awaiting owner review + go for new repo/CF worker.
