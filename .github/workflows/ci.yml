@@ -12,7 +12,7 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm test
-      - run: npm run sim -- --games 50
+      - run: npm run sim -- --games 200 --assert
       - run: npm run build -w @talad/client
       - run: npx playwright install --with-deps chromium
       - run: npm run e2e

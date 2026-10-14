@@ -8,42 +8,42 @@ export const DT = 1 / TICK_HZ;
 export const ARENA_W = 40;
 export const ARENA_H = 24;
 
-export const UNIT_SPEED = 6;
+export const UNIT_SPEED = 7;
 export const CARRY_SPEED = 4;
 export const UNIT_RADIUS = 0.45;
 export const PICK_RADIUS = 1.0;
 
-export const DROP_INTERVAL_CENTER_TICKS = 60;
-export const DROP_INTERVAL_SIDE_TICKS = 140;
+export const DROP_INTERVAL_CENTER_TICKS = 40;
+export const DROP_INTERVAL_SIDE_TICKS = 90;
 export const DROP_FALL_TICKS = 30;
-export const MAX_GROUND_CRATES = 10;
+export const MAX_GROUND_CRATES = 14;
 
 /** A resting crate must sit at least this far inside the arena bounds. */
 export const CRATE_MARGIN = 0.1;
 
 /** Q9 loadout values: units respawn at this HP after death. */
 export const UNIT_MAX_HP = 100;
-/** Q5 win condition target: one bullet of stall HP is 12/1500 of the total. */
-export const STALL_MAX_HP = 1500;
+/** Q5 win condition target: one bullet of stall HP is 12/3700 of the total. */
+export const STALL_MAX_HP = 3700;
 
 /**
  * Task 4 combat values (initial — the balance harness tunes them later).
  * Cooldowns are "ticks until the attack may fire again"; damage to stalls is
  * plain for bullets and slaps, and ×BOMB_STALL_MULT for bombs.
  */
-export const SLAP_DMG = 8;
+export const SLAP_DMG = 7;
 export const SLAP_RANGE = 1.2;
 export const SLAP_COOLDOWN_TICKS = 10;
 export const GUN_DMG = 12;
-export const GUN_RANGE = 9;
-export const GUN_COOLDOWN_TICKS = 6;
+export const GUN_RANGE = 11;
+export const GUN_COOLDOWN_TICKS = 3;
 export const BULLET_SPEED = 18;
 export const BOMB_DMG = 45;
 export const BOMB_RADIUS = 2.2;
 export const BOMB_THROW_RANGE = 7;
 export const BOMB_FUSE_TICKS = 24;
 export const BOMB_STALL_MULT = 1.5;
-export const RESPAWN_TICKS = 100;
+export const RESPAWN_TICKS = 165;
 
 export const PAD_CELL_SIZE = 1.5;
 export const PAD_FLOOR = 2; // 2x2 floor cells -> 4 pad columns
