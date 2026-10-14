@@ -86,6 +86,7 @@ function spawnBuddy(s: MatchState, team: Team): void {
     carrying: null,
     gun: null,
     bombs: 0,
+    attackCooldownTicks: 0,
     deadUntilTick: null,
   });
 }

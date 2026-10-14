@@ -46,6 +46,7 @@ export function createMatch(seed: number, opts?: { humanUnit?: UnitId | null }):
         carrying: null,
         gun: null,
         bombs: 0,
+        attackCooldownTicks: 0,
         deadUntilTick: null,
       });
       id++;

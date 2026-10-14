@@ -64,6 +64,7 @@ function extraUnit(s: MatchState, id: number, team: Team): Unit {
     carrying: null,
     gun: null,
     bombs: 0,
+    attackCooldownTicks: 0,
     deadUntilTick: null,
   };
   s.units.push(unit);
@@ -137,7 +138,9 @@ describe('the Open! channel', () => {
   it('a bombs recipe refills to BOMBS_PER_RECIPE (not adds) and keeps the gun', () => {
     let s = bombsMatch();
     must(s.units[0]).bombs = 1;
-    must(s.units[0]).gun = { ammoCooldownTicks: 4 };
+    // Task 4 decays gun cooldowns passively: 25 - 21 ticks of this script = 4,
+    // so the pinned value below still proves the gun is KEPT, not replaced.
+    must(s.units[0]).gun = { ammoCooldownTicks: 25 };
     s = step(s, new Map([[0, inp({ open: true })]]));
     s = runTicks(s, OPEN_TICKS);
     const unit = must(s.units[0]);
