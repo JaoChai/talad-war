@@ -2,7 +2,12 @@ import Phaser from 'phaser';
 import './shell.css';
 import { BootScene } from './scenes/Boot';
 import { MatchScene } from './scenes/Match';
+import { TitleScene } from './scenes/Title';
+import { ResultsScene } from './scenes/Results';
+import { mountRotatePrompt } from './hud/rotatePrompt';
 import { STAGE_H, STAGE_W } from './render/world';
+
+mountRotatePrompt(document.getElementById('app')!);
 
 /** Logical 720p stage; Scale.FIT letterboxes it into any screen. */
 export const GAME_WIDTH = STAGE_W;
@@ -21,5 +26,5 @@ export default new Phaser.Game({
   input: {
     activePointers: 4,
   },
-  scene: [BootScene, MatchScene],
+  scene: [BootScene, TitleScene, MatchScene, ResultsScene],
 });

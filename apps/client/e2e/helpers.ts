@@ -1,4 +1,5 @@
-import type { CDPSession, Page } from '@playwright/test';
+import { expect, type CDPSession, type Page } from '@playwright/test';
+import type { MatchStats } from '../src/stats';
 import type { AudioLogEntry } from '../src/testHooks';
 
 /** Minimal shape of window.__talad.state() used by the e2e specs. */
@@ -14,6 +15,7 @@ export interface HookUnit {
 }
 
 export interface HookState {
+  seed: number;
   tick: number;
   units: HookUnit[];
   crates: { id: number; pos: { x: number; y: number }; state: string; landTick: number }[];
@@ -31,6 +33,7 @@ export interface HookState {
 declare global {
   interface Window {
     __talad: {
+      stats(): MatchStats;
       audioLog(): AudioLogEntry[];
       audioReady(): boolean;
       musicGain(): number;
@@ -45,8 +48,25 @@ declare global {
   }
 }
 
-export async function waitHooks(page: Page): Promise<void> {
+export async function enterMatch(page: Page): Promise<void> {
+  await expect(page).toHaveTitle('Talad War');
+  await page.waitForFunction(
+    () => window.__talad !== undefined || document.querySelector('[data-screen="title"]') !== null,
+  );
+  if (await page.locator('[data-screen="title"]').count()) {
+    await page.getByRole('button', { name: 'เล่น', exact: true }).click();
+    await page.waitForFunction(
+      () =>
+        window.__talad !== undefined || document.querySelector('[data-screen="howto"]') !== null,
+    );
+    if (await page.locator('[data-screen="howto"]').count())
+      await page.getByRole('button', { name: 'ข้าม', exact: true }).click();
+  }
   await page.waitForFunction(() => window.__talad !== undefined, undefined, { timeout: 20_000 });
+}
+
+export async function waitHooks(page: Page): Promise<void> {
+  await enterMatch(page);
 }
 
 export async function getState(page: Page): Promise<HookState> {
