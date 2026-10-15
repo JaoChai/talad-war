@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { DROP_FALL_TICKS, STALL_MAX_HP } from '@talad/sim';
+import { DROP_FALL_TICKS, STALL_MAX_HP, stallRect } from '@talad/sim';
 import type { Crate, MatchState, Team, Unit } from '@talad/sim';
 import { STAGE_SCALE, clampDrawY, padCellOffset, padCenterOffset, worldToStage } from './world';
 
@@ -21,11 +21,17 @@ const HURT_FRAME = 3;
 const UNIT_DISPLAY_HEIGHT = 92;
 const UNIT_ANCHOR_Y = 0.984375;
 const HURT_FLASH_MS = 220;
+const STALL_FLASH_MS = 180;
+const STALL_CUE_GAP_MS = 200;
+const STALL_SHAKE_MS = 120;
 
 interface UnitView {
   sprite: Phaser.GameObjects.Sprite;
   ring: Phaser.GameObjects.Ellipse;
   hurtUntil: number;
+  attackAt: number;
+  attackTick: number;
+  attackDir: { x: number; y: number };
 }
 
 interface CrateView {
@@ -53,6 +59,7 @@ export class MatchView {
   private readonly projectiles = new Map<number, ProjectileView>();
   private readonly padSprites = new Map<string, Phaser.GameObjects.Image>();
   private readonly stallSprites: Partial<Record<Team, Phaser.GameObjects.Image>> = {};
+  private lastEventTick = -1;
   /** Small marker above the human unit (card Task mapping). */
   private readonly humanMarker: Phaser.GameObjects.Triangle;
 
@@ -64,6 +71,8 @@ export class MatchView {
 
     for (const team of ['fruit', 'dessert'] as const) {
       const stall = scene.add.image(0, 0, stallTexture(team, STALL_MAX_HP));
+      stall.setName(`stall-${team}`);
+      stall.setData({ flashUntil: 0, shakeAt: -Infinity });
       stall.setDisplaySize(4.6 * STAGE_SCALE, 4.6 * STAGE_SCALE * (218 / 358));
       stall.setOrigin(0.5, 0.72);
       this.stallSprites[team] = stall;
@@ -76,6 +85,7 @@ export class MatchView {
   sync(prev: MatchState, cur: MatchState, alpha: number): void {
     const prevUnits = new Map(prev.units.map((u) => [u.id, u]));
     const now = this.scene.time.now;
+    this.syncEvents(cur, now);
 
     // Stalls.
     for (const team of ['fruit', 'dessert'] as const) {
@@ -83,8 +93,16 @@ export class MatchView {
       const stall = cur.stalls[team];
       if (!sprite || !stall) continue;
       const at = worldToStage(stall.pos);
-      sprite.setPosition(at.x, at.y);
+      const elapsed = now - (sprite.getData('shakeAt') as number);
+      const shake =
+        elapsed < STALL_SHAKE_MS
+          ? 3 * Math.sin(elapsed * 0.15) * (1 - elapsed / STALL_SHAKE_MS)
+          : 0;
+      sprite.setPosition(at.x + shake, at.y);
       sprite.setTexture(stallTexture(team, stall.hp));
+      if (now < (sprite.getData('flashUntil') as number))
+        sprite.setTint(0x995544).setTintMode(Phaser.TintModes.MULTIPLY);
+      else sprite.clearTint();
       sprite.setDepth(Math.floor(at.y) - 4);
     }
 
@@ -95,6 +113,19 @@ export class MatchView {
     for (const unit of cur.units) {
       const view = this.ensureUnit(unit);
       const before = prevUnits.get(unit.id);
+      const attacked =
+        before &&
+        (unit.attackCooldownTicks > before.attackCooldownTicks ||
+          (unit.gun !== null &&
+            before.gun !== null &&
+            unit.gun.ammoCooldownTicks > before.gun.ammoCooldownTicks));
+      if (cur.tick < view.attackTick) view.attackAt = -Infinity;
+      if (attacked && cur.tick !== view.attackTick) {
+        view.attackTick = cur.tick;
+        view.attackAt = now;
+        view.attackDir = { ...unit.facing };
+        view.sprite.setData('attackAt', now);
+      }
       const x = before ? Phaser.Math.Linear(before.pos.x, unit.pos.x, alpha) : unit.pos.x;
       const y = before ? Phaser.Math.Linear(before.pos.y, unit.pos.y, alpha) : unit.pos.y;
       const at = worldToStage({ x, y });
@@ -107,7 +138,18 @@ export class MatchView {
       view.ring.setVisible(!dead);
       if (dead) continue;
       const drawY = clampDrawY(at.y); // review round 1 #2: keep heads on-canvas
-      view.sprite.setPosition(at.x, drawY);
+      // Existing frames only: one 180ms lunge/squash, independent of render
+      // frame count. The sim's cooldown reset proves an attack really fired.
+      const elapsed = now - view.attackAt;
+      const pulse = elapsed >= 0 && elapsed < 180 ? Math.sin((Math.PI * elapsed) / 180) : 0;
+      view.sprite.setPosition(
+        at.x + view.attackDir.x * 9 * pulse,
+        drawY + view.attackDir.y * 9 * pulse,
+      );
+      view.sprite.setDisplaySize(
+        UNIT_DISPLAY_HEIGHT * (1 + 0.08 * pulse),
+        UNIT_DISPLAY_HEIGHT * (1 - 0.08 * pulse),
+      );
       view.sprite.setDepth(Math.floor(drawY));
       view.ring.setPosition(at.x, drawY - 2);
       view.ring.setDepth(Math.floor(drawY) - 1);
@@ -120,7 +162,7 @@ export class MatchView {
             ? RUN_FRAME
             : IDLE_FRAME;
       view.sprite.setFrame(frame);
-      view.sprite.setFlipX(unit.facing.x < -0.01);
+      view.sprite.setFlipX((pulse > 0 ? view.attackDir.x : unit.facing.x) < -0.01);
     }
 
     // Marker above the human unit (unit 0, fruit).
@@ -143,7 +185,6 @@ export class MatchView {
 
     this.syncCrates(prev, cur, alpha);
     this.syncProjectiles(prev, cur, alpha);
-    this.syncEvents(cur, now);
   }
 
   private ensureUnit(unit: Unit): UnitView {
@@ -153,10 +194,18 @@ export class MatchView {
     const skins = SKINS[unit.team];
     const skin = skins[Math.min(Math.max(teamMates, 0), skins.length - 1)] ?? skins[0]!;
     const sprite = this.scene.add.sprite(0, 0, skin, 0);
+    sprite.setName(`unit-${unit.id}`);
     sprite.setOrigin(0.5, UNIT_ANCHOR_Y);
     sprite.setDisplaySize(UNIT_DISPLAY_HEIGHT, UNIT_DISPLAY_HEIGHT);
     const ring = this.scene.add.ellipse(0, 0, 44, 15, TEAM_COLOURS[unit.team], 0.4);
-    const view: UnitView = { sprite, ring, hurtUntil: 0 };
+    const view: UnitView = {
+      sprite,
+      ring,
+      hurtUntil: 0,
+      attackAt: -Infinity,
+      attackTick: -1,
+      attackDir: { x: 0, y: 0 },
+    };
     this.units.set(unit.id, view);
     return view;
   }
@@ -298,6 +347,15 @@ export class MatchView {
 
   /** FX from the latest tick's events: explosions and hurt flashes. */
   private syncEvents(cur: MatchState, now: number): void {
+    // A sim tick is rendered several times. Replaying it extends flashes and
+    // spawns duplicate sparks/explosions; a seed reset must release the guard.
+    if (cur.tick === this.lastEventTick) return;
+    if (cur.tick < this.lastEventTick) {
+      for (const sprite of Object.values(this.stallSprites)) {
+        sprite.setData({ flashUntil: 0, shakeAt: -Infinity });
+      }
+    }
+    this.lastEventTick = cur.tick;
     for (const event of cur.events) {
       if (event.kind === 'explosion') {
         const pos = event.pos as { x: number; y: number } | undefined;
@@ -317,8 +375,52 @@ export class MatchView {
       } else if (event.kind === 'hit' && typeof event.target === 'number') {
         const view = this.units.get(event.target);
         if (view) view.hurtUntil = now + HURT_FLASH_MS;
+      } else if (event.kind === 'hit' && (event.target === 'fruit' || event.target === 'dessert')) {
+        this.stallHit(cur, event.target, now);
       }
     }
+  }
+
+  private stallHit(cur: MatchState, team: Team, now: number): void {
+    const stall = this.stallSprites[team];
+    if (!stall || now - (stall.getData('shakeAt') as number) < STALL_CUE_GAP_MS) return;
+    // One cue per stall per 200ms, including same-tick multi-hits. Do not extend
+    // the flash on every gun hit: leave a quiet interval rather than strobing.
+    stall.setData({ flashUntil: now + STALL_FLASH_MS, shakeAt: now });
+    const rect = stallRect(team);
+    let impact = cur.stalls[team].pos;
+    let nearest = Infinity;
+    // hit events carry no source/position. Project the nearest living attacker
+    // onto the struck stall so the spark reads on the incoming side, not centre.
+    for (const unit of cur.units) {
+      if (unit.team === team || unit.deadUntilTick !== null) continue;
+      const point = {
+        x: Math.max(rect.minX, Math.min(rect.maxX, unit.pos.x)),
+        y: Math.max(rect.minY, Math.min(rect.maxY, unit.pos.y)),
+      };
+      const distance = Math.hypot(point.x - unit.pos.x, point.y - unit.pos.y);
+      if (distance < nearest) {
+        nearest = distance;
+        // Put the spark just outside the facade, not inside its bright canopy.
+        impact = {
+          x: point.x + ((unit.pos.x - point.x) / Math.max(distance, 0.001)) * 0.35,
+          y: point.y + ((unit.pos.y - point.y) / Math.max(distance, 0.001)) * 0.35,
+        };
+      }
+    }
+    const at = worldToStage(impact);
+    const spark = this.scene.add.sprite(at.x, at.y - 14, 'explosion');
+    spark.setName(`stall-hit-${team}`);
+    spark.setDisplaySize(36, 30);
+    spark.setDepth(900);
+    this.scene.tweens.add({
+      targets: spark,
+      displayWidth: 46,
+      displayHeight: 38,
+      alpha: 0,
+      duration: 160,
+      onComplete: () => spark.destroy(),
+    });
   }
 }
 

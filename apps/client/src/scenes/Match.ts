@@ -160,6 +160,30 @@ export class MatchScene extends Phaser.Scene {
         audioLog: () => structuredClone(audioLog),
         audioReady: () => this.audio.isReady,
         musicGain: () => this.audio.musicGain,
+        unitFeedback: (id) => {
+          const sprite = this.children.getByName(`unit-${id}`) as Phaser.GameObjects.Sprite | null;
+          return {
+            now: this.time.now,
+            attackAt: (sprite?.getData('attackAt') as number | undefined) ?? -1,
+            x: sprite?.x ?? 0,
+            y: sprite?.y ?? 0,
+            width: sprite?.displayWidth ?? 0,
+            flipX: sprite?.flipX ?? false,
+          };
+        },
+        stallFeedback: (team) => {
+          // Observe real Phaser objects; no renderer test-only methods.
+          const stall = this.children.getByName(`stall-${team}`) as Phaser.GameObjects.Image | null;
+          return {
+            now: this.time.now,
+            flashUntil: (stall?.getData('flashUntil') as number | undefined) ?? 0,
+            shakeAt: (stall?.getData('shakeAt') as number | undefined) ?? -1,
+            tint: stall?.tintTopLeft ?? 0xffffff,
+            x: stall?.x ?? 0,
+            y: stall?.y ?? 0,
+            sparks: this.children.list.filter((child) => child.name === `stall-hit-${team}`).length,
+          };
+        },
         state: () => structuredClone(this.state),
         setSeed: (seed: number) => {
           this.state = createMatch(seed);

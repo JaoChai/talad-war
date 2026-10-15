@@ -1,12 +1,14 @@
 import { autoAimTarget } from '../autoAim';
 import {
+  ARENA_H,
+  ARENA_W,
   BOMB_THROW_RANGE,
   CENTER_DROP_ZONE,
   GUN_RANGE,
   PICK_RADIUS,
   SLAP_RANGE,
 } from '../constants';
-import { dist2, vecNormalize } from '../geometry';
+import { dist2, vecClampLength, vecNormalize } from '../geometry';
 import type { Rect } from '../geometry';
 import { stallCenter, stallRect } from '../map';
 import { unitDead } from '../open';
@@ -53,6 +55,7 @@ interface BotPlan {
   pickDrop: boolean;
   open: boolean;
   throwBomb: boolean;
+  boundedMill?: boolean;
 }
 
 /**
@@ -219,6 +222,76 @@ function attackPlan(s: MatchState, unit: Unit, ti: number): BotPlan {
   const dy = unit.pos.y - nr.y;
   const d = Math.hypot(dx, dy);
   const armed = unit.gun !== null;
+  const closeAttackGroup =
+    !armed &&
+    unit.bombs === 0 &&
+    d <= 3 &&
+    s.units.filter(
+      (u) =>
+        u.team === unit.team &&
+        u.isBot &&
+        !unitDead(u) &&
+        u.gun === null &&
+        u.bombs === 0 &&
+        botGoal(s, u.id) === 'attack',
+    ).length > 1;
+  if (closeAttackGroup) {
+    // Stable close-attack stations, not the current position: self-anchored
+    // full-speed milling drifts along the face and piles teammates together.
+    // Resolve in fruit space then rotate; global ids must never choose slots.
+    const canonical = stallRect('dessert');
+    const slots = [
+      { x: canonical.minX - 0.7, y: canonical.minY + 2.4 },
+      { x: canonical.minX + 0.7, y: canonical.maxY + 0.7 },
+      { x: canonical.minX - 0.7, y: canonical.minY + 0.2 },
+      { x: canonical.maxX - 0.5, y: canonical.maxY + 0.7 },
+      { x: canonical.maxX + 0.7, y: canonical.minY + 2.4 },
+    ];
+    const canonicalPos = (u: Unit): Vec2 =>
+      u.team === 'fruit' ? u.pos : { x: ARENA_W - u.pos.x, y: ARENA_H - u.pos.y };
+    // Incumbents claim their nearest station first, then arrivals take the
+    // nearest free face. Ties use TEAM INDEX, not global ids or team direction.
+    // No remembered assignment: identical mirrored states give identical claims.
+    const group = s.units
+      .filter(
+        (u) =>
+          u.team === unit.team &&
+          u.isBot &&
+          !unitDead(u) &&
+          u.gun === null &&
+          u.bombs === 0 &&
+          botGoal(s, u.id) === 'attack',
+      )
+      .sort(
+        (a, b) =>
+          Math.min(...slots.map((p) => dist2(canonicalPos(a), p))) -
+            Math.min(...slots.map((p) => dist2(canonicalPos(b), p))) ||
+          teamIndexOf(s, a) - teamIndexOf(s, b),
+      );
+    const free = new Set(slots.map((_, i) => i));
+    let at = slots[0]!;
+    for (const mate of group) {
+      const pos = canonicalPos(mate);
+      const slot = [...free].sort(
+        (a, b) => dist2(pos, slots[a]!) - dist2(pos, slots[b]!) || a - b,
+      )[0]!;
+      free.delete(slot);
+      if (mate.id === unit.id) {
+        at = slots[slot]!;
+        break;
+      }
+    }
+    return {
+      target: unit.team === 'fruit' ? at : { x: ARENA_W - at.x, y: ARENA_H - at.y },
+      arriveRadius: 0.25,
+      millSpeed: 0.25,
+      boundedMill: true,
+      aim: nr, // movement no longer makes a slapper face away from its attack
+      pickDrop: false,
+      open: false,
+      throwBomb: false,
+    };
+  }
   // Bomb carriers close in first: the throw range is shorter than the gun range,
   // and a carrier that holds at gun range never releases its bombs.
   const holdDist =
@@ -236,7 +309,10 @@ function attackPlan(s: MatchState, unit: Unit, ti: number): BotPlan {
   const enemyNear = s.units.some(
     (e) => e.team !== unit.team && !unitDead(e) && dist2(unit.pos, e.pos) <= (SLAP_RANGE * 2) ** 2,
   );
-  const aim = (armed && d <= GUN_RANGE && !enemyNear) || bombsReady ? nr : null;
+  const aim =
+    (armed && d <= GUN_RANGE && !enemyNear) || bombsReady || (!armed && d <= SLAP_RANGE)
+      ? nr
+      : null;
   if (d > holdDist + 0.4) {
     return {
       target: { x: nr.x + from.x * holdDist, y: nr.y + from.y * holdDist },
@@ -290,6 +366,13 @@ function steer(unit: Unit, plan: BotPlan, tick: number, ti: number): Vec2 {
   const mill = MILL_DIRS[
     (Math.floor(tick / MILL_TICKS) + ti * 3 + (unit.team === 'dessert' ? 4 : 0)) % MILL_DIRS.length
   ] ?? { x: 0, y: 0 };
+  if (plan.boundedMill) {
+    // Retain the small mill's magnitude instead of normalizing it to full speed.
+    return vecClampLength(
+      { x: mill.x * plan.millSpeed + to.x * 2, y: mill.y * plan.millSpeed + to.y * 2 },
+      0.5,
+    );
+  }
   const pull = d > 1e-6 ? { x: (to.x / d) * 0.25, y: (to.y / d) * 0.25 } : { x: 0, y: 0 };
   return vecNormalize({ x: mill.x * plan.millSpeed + pull.x, y: mill.y * plan.millSpeed + pull.y });
 }

@@ -10,6 +10,16 @@ export interface AudioLogEntry {
   musicGain: number;
 }
 
+export interface StallFeedback {
+  now: number;
+  flashUntil: number;
+  shakeAt: number;
+  tint: number;
+  x: number;
+  y: number;
+  sparks: number;
+}
+
 /** window.__talad — Playwright drives matches through these (plan Task 8).
  *
  * The assignment lives inline in MatchScene behind a build-time constant so the
@@ -22,6 +32,15 @@ export interface TaladTestHooks {
   audioLog(): AudioLogEntry[];
   audioReady(): boolean;
   musicGain(): number;
+  unitFeedback(id: number): {
+    now: number;
+    attackAt: number;
+    x: number;
+    y: number;
+    width: number;
+    flipX: boolean;
+  };
+  stallFeedback(team: Team): StallFeedback;
   state(): MatchState;
   setSeed(seed: number): void;
   fastForward(ticks: number): void;
