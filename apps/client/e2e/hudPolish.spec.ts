@@ -19,6 +19,7 @@ async function openMatch(page: Parameters<typeof waitHooks>[0]): Promise<void> {
 test('Thai command labels keep whole words with padded, non-overlapping targets', async ({
   page,
 }, testInfo) => {
+  await page.clock.install();
   await openMatch(page);
   if (process.env.HUD_POLISH_SHOTS) {
     await page.screenshot({
@@ -82,12 +83,42 @@ test('Thai command labels keep whole words with padded, non-overlapping targets'
     expect.soft(label.box.y + label.box.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   }
   // Include maximal touch controls without changing the existing HUD spec.
-  await page.evaluate(() => window.__talad.setPadCrates('fruit', [0, 1]));
-  await page.evaluate(() => window.__talad.placeUnit(0, 8.75, 18.75));
   if (testInfo.project.name === 'mobile-landscape') {
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+    await page.evaluate(() => {
+      window.__talad.setSeed(7);
+      window.__talad.setCommand('fruit', 'guard');
+      window.__talad.setCommand('dessert', 'guard');
+      window.__talad.setPadCrates('fruit', [0, 1]);
+      window.__talad.placeUnit(0, 8.75, 18.75);
+    });
+    await page.clock.runFor(50); // render Open before sending the real input pulse
+    await expect(page.locator('#tw-btn-open')).toBeVisible();
     await page.locator('#tw-btn-open').click();
-    await expect.poll(() => page.evaluate(() => window.__talad.state().units[0]!.bombs)).toBe(3);
+    // Same deterministic staging as audio.spec.ts: first consume the real
+    // Open input, then complete its 20 simulation ticks, not 5s of wall time.
+    await expect.poll(() => page.evaluate(() => window.__talad.audioReady())).toBe(true);
+    await expect
+      .poll(
+        async () => {
+          await page.clock.runFor(50);
+          return page.evaluate(() =>
+            window.__talad.audioLog().some((event) => event.key === 'openStarted' && event.started),
+          );
+        },
+        { intervals: [0] },
+      )
+      .toBe(true);
+    const startedTick = await page.evaluate(() => window.__talad.state().tick);
+    await page.evaluate(() => window.__talad.fastForward(20));
+    expect(await page.evaluate(() => window.__talad.state().units[0]!.bombs)).toBe(3);
+    console.log('recipe staging', {
+      startedTick,
+      completedTick: await page.evaluate(() => window.__talad.state().tick),
+      bombs: await page.evaluate(() => window.__talad.state().units[0]!.bombs),
+    });
     await page.evaluate(() => window.__talad.setPadCrates('fruit', [0, 1]));
+    await page.clock.runFor(50); // syncUi renders Open and Throw together
     await expect(page.locator('#tw-btn-open')).toBeVisible();
     await expect(page.locator('#tw-btn-throw')).toBeVisible();
   }
