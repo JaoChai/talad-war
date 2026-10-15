@@ -162,7 +162,17 @@ export class MatchScene extends Phaser.Scene {
         musicGain: () => this.audio.musicGain,
         unitFeedback: (id) => {
           const sprite = this.children.getByName(`unit-${id}`) as Phaser.GameObjects.Sprite | null;
+          const slash = this.children.getByName(
+            `attack-slash-${id}`,
+          ) as Phaser.GameObjects.Graphics | null;
           return {
+            slash: slash
+              ? {
+                  kind: slash.getData('kind') as string,
+                  screenSize: (slash.getData('size') as number) * this.scale.displayScale.x ** -1,
+                  alpha: slash.alpha,
+                }
+              : null,
             now: this.time.now,
             attackAt: (sprite?.getData('attackAt') as number | undefined) ?? -1,
             x: sprite?.x ?? 0,
@@ -182,6 +192,19 @@ export class MatchScene extends Phaser.Scene {
             x: stall?.x ?? 0,
             y: stall?.y ?? 0,
             sparks: this.children.list.filter((child) => child.name === `stall-hit-${team}`).length,
+            damage: this.children.list
+              .filter((child) => child.name === `stall-damage-${team}`)
+              .map((child) => {
+                const text = child as Phaser.GameObjects.Text;
+                return {
+                  text: text.text,
+                  y: text.y,
+                  alpha: text.alpha,
+                  screenFont:
+                    Number(text.style.fontSize.toString().replace('px', '')) *
+                    this.scale.displayScale.x ** -1,
+                };
+              }),
           };
         },
         state: () => structuredClone(this.state),

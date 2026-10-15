@@ -1,6 +1,64 @@
 import { expect, test } from '@playwright/test';
 import { waitHooks } from './helpers';
 
+test('stall damage numbers round real damage, merge for 150ms, rise and fade in 600ms', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto('/?seed=43');
+  await waitHooks(page);
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  const first = await page.evaluate(() => {
+    const h = window.__talad;
+    h.setSeed(43);
+    h.setCommand('fruit', 'attack');
+    h.placeUnit(1, 32.3, 4.4);
+    h.placeUnit(2, 33.7, 6.7);
+    h.fastForward(1);
+    return { state: h.state(), fx: h.stallFeedback('dessert') };
+  });
+  const dmg = first.state.events
+    .filter((e) => e.kind === 'hit' && e.target === 'dessert')
+    .reduce((n, e) => n + (e.dmg ?? 0), 0);
+  expect(dmg).toBeGreaterThan(0);
+  expect(first.fx.damage).toHaveLength(1);
+  expect(first.fx.damage[0]!.text).toBe(`-${Math.round(dmg)}`);
+  expect(first.fx.damage[0]!.screenFont).toBeGreaterThanOrEqual(16);
+  const merged = await page.evaluate(() => {
+    const h = window.__talad;
+    let added = 0;
+    for (let i = 0; i < 10; i++) {
+      h.fastForward(1);
+      added += h
+        .state()
+        .events.filter((e) => e.kind === 'hit' && e.target === 'dessert')
+        .reduce((n, e) => n + (e.dmg ?? 0), 0);
+    }
+    return { added, fx: h.stallFeedback('dessert') };
+  });
+  expect(merged.added).toBeGreaterThan(0);
+  expect(merged.fx.damage).toHaveLength(1);
+  expect(merged.fx.damage[0]!.text).toBe(`-${Math.round(dmg + merged.added)}`);
+  // Freeze the sim's human attackers away from the stall; natural bot attacks
+  // remain >600ms away after this seed reset, so expiry cannot be refreshed.
+  await page.evaluate(() => {
+    window.__talad.setCommand('fruit', 'guard');
+    window.__talad.placeUnit(1, 20, 12);
+    window.__talad.placeUnit(2, 20, 14);
+  });
+  await page.clock.runFor(112);
+  const shake = await page.evaluate(() => window.__talad.stallFeedback('dessert'));
+  expect(Math.abs(shake.x - first.fx.x)).toBeLessThanOrEqual(6);
+  await page.clock.runFor(208);
+  const rising = await page.evaluate(() => window.__talad.stallFeedback('dessert'));
+  expect(rising.damage[0]!.y).toBeLessThan(first.fx.damage[0]!.y - 10);
+  expect(rising.damage[0]!.alpha).toBeLessThan(0.6);
+  await page.clock.runFor(320);
+  expect((await page.evaluate(() => window.__talad.stallFeedback('dessert'))).damage).toHaveLength(
+    0,
+  );
+});
+
 test('real slaps lunge toward the stall once per tick then return to normal size', async ({
   page,
 }) => {
@@ -19,6 +77,8 @@ test('real slaps lunge toward the stall once per tick then return to normal size
   });
   expect(first.state.events.some((e) => e.kind === 'hit' && e.target === 'dessert')).toBe(true);
   expect(first.fx.attackAt).toBe(first.fx.now);
+  expect(first.fx.slash?.kind).toBe('slap');
+  expect(first.fx.slash!.screenSize).toBeGreaterThanOrEqual(28);
   await page.clock.runFor(64);
   const peak = await page.evaluate(() => ({
     state: window.__talad.state(),
@@ -28,7 +88,7 @@ test('real slaps lunge toward the stall once per tick then return to normal size
   expect(peak.fx.width).toBeGreaterThan(94);
   expect(peak.fx.flipX).toBe(false);
   expect(peak.fx.attackAt).toBe(first.fx.attackAt);
-  await page.clock.runFor(160);
+  await page.clock.runFor(208); // 220ms lunge plus one RAF margin
   const end = await page.evaluate(() => window.__talad.unitFeedback(1));
   expect(end.width).toBe(92);
 });
@@ -63,6 +123,8 @@ test('a real gun cooldown reset also starts a fresh attack pose', async ({ page 
   expect(shot.fired).toBe(true);
   expect(shot.fx.attackAt).toBeGreaterThan(shot.old);
   expect(shot.fx.attackAt).toBe(shot.fx.now);
+  expect(shot.fx.slash?.kind).toBe('gun');
+  expect(shot.fx.slash!.screenSize).toBeGreaterThanOrEqual(28);
   await page.clock.runFor(64);
   const width = await page.evaluate(() => {
     const u = window.__talad.state().units.find((u) => u.gun !== null)!;
@@ -124,7 +186,7 @@ test('stall hits tint both stalls, spark on the attacker side, expire and rate-l
   await page.clock.runFor(80);
   const shaking = await page.evaluate(() => window.__talad.stallFeedback('dessert'));
   expect(Math.abs(shaking.x - first.dessert.x)).toBeGreaterThan(0.01);
-  expect(Math.abs(shaking.x - first.dessert.x)).toBeLessThanOrEqual(4);
+  expect(Math.abs(shaking.x - first.dessert.x)).toBeLessThanOrEqual(6);
   await page.clock.runFor(144);
   const expired = await page.evaluate(() => window.__talad.stallFeedback('dessert'));
   expect(expired.now).toBeGreaterThan(first.dessert.flashUntil);

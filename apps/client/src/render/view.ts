@@ -21,9 +21,9 @@ const HURT_FRAME = 3;
 const UNIT_DISPLAY_HEIGHT = 92;
 const UNIT_ANCHOR_Y = 0.984375;
 const HURT_FLASH_MS = 220;
-const STALL_FLASH_MS = 180;
+const STALL_FLASH_MS = 200;
 const STALL_CUE_GAP_MS = 200;
-const STALL_SHAKE_MS = 120;
+const STALL_SHAKE_MS = 160;
 
 interface UnitView {
   sprite: Phaser.GameObjects.Sprite;
@@ -60,6 +60,10 @@ export class MatchView {
   private readonly padSprites = new Map<string, Phaser.GameObjects.Image>();
   private readonly stallSprites: Partial<Record<Team, Phaser.GameObjects.Image>> = {};
   private lastEventTick = -1;
+  private readonly damageNumbers = new Map<
+    Team,
+    { text: Phaser.GameObjects.Text; at: number; dmg: number }
+  >();
   /** Small marker above the human unit (card Task mapping). */
   private readonly humanMarker: Phaser.GameObjects.Triangle;
 
@@ -96,7 +100,7 @@ export class MatchView {
       const elapsed = now - (sprite.getData('shakeAt') as number);
       const shake =
         elapsed < STALL_SHAKE_MS
-          ? 3 * Math.sin(elapsed * 0.15) * (1 - elapsed / STALL_SHAKE_MS)
+          ? 6 * Math.sin(elapsed * 0.15) * (1 - elapsed / STALL_SHAKE_MS)
           : 0;
       sprite.setPosition(at.x + shake, at.y);
       sprite.setTexture(stallTexture(team, stall.hp));
@@ -125,6 +129,7 @@ export class MatchView {
         view.attackAt = now;
         view.attackDir = { ...unit.facing };
         view.sprite.setData('attackAt', now);
+        this.attackSlash(unit);
       }
       const x = before ? Phaser.Math.Linear(before.pos.x, unit.pos.x, alpha) : unit.pos.x;
       const y = before ? Phaser.Math.Linear(before.pos.y, unit.pos.y, alpha) : unit.pos.y;
@@ -138,13 +143,13 @@ export class MatchView {
       view.ring.setVisible(!dead);
       if (dead) continue;
       const drawY = clampDrawY(at.y); // review round 1 #2: keep heads on-canvas
-      // Existing frames only: one 180ms lunge/squash, independent of render
+      // Existing frames only: one 220ms lunge/squash, independent of render
       // frame count. The sim's cooldown reset proves an attack really fired.
       const elapsed = now - view.attackAt;
-      const pulse = elapsed >= 0 && elapsed < 180 ? Math.sin((Math.PI * elapsed) / 180) : 0;
+      const pulse = elapsed >= 0 && elapsed < 220 ? Math.sin((Math.PI * elapsed) / 220) : 0;
       view.sprite.setPosition(
-        at.x + view.attackDir.x * 9 * pulse,
-        drawY + view.attackDir.y * 9 * pulse,
+        at.x + view.attackDir.x * 12 * pulse,
+        drawY + view.attackDir.y * 12 * pulse,
       );
       view.sprite.setDisplaySize(
         UNIT_DISPLAY_HEIGHT * (1 + 0.08 * pulse),
@@ -208,6 +213,76 @@ export class MatchView {
     };
     this.units.set(unit.id, view);
     return view;
+  }
+
+  private attackSlash(unit: Unit): void {
+    const name = `attack-slash-${unit.id}`;
+    const old = this.scene.children.getByName(name);
+    if (old) {
+      this.scene.tweens.killTweensOf(old);
+      old.destroy();
+    }
+    const at = worldToStage(unit.pos);
+    const fx = this.scene.add.graphics({
+      x: at.x + unit.facing.x * 30,
+      y: clampDrawY(at.y) - 32 + unit.facing.y * 20,
+    });
+    fx.setName(name).setDepth(950).setRotation(Math.atan2(unit.facing.y, unit.facing.x));
+    fx.setData({ kind: unit.gun ? 'gun' : 'slap', size: 60 });
+    if (unit.gun) {
+      const points = [
+        32, 0, 12, 9, 10, 28, -1, 13, -24, 18, -11, 0, -24, -18, -1, -13, 10, -28, 12, -9,
+      ];
+      fx.fillStyle(0xffd75e, 1).lineStyle(5, 0x382015, 1);
+      fx.fillPoints(
+        points.reduce<Phaser.Math.Vector2[]>((out, _, i) => {
+          if (i % 2 === 0) out.push(new Phaser.Math.Vector2(points[i]!, points[i + 1]!));
+          return out;
+        }, []),
+        true,
+      );
+      fx.strokePath();
+      fx.fillStyle(0xffffff, 1).fillCircle(4, 0, 10);
+    } else {
+      fx.lineStyle(14, 0x382015, 1).beginPath().arc(0, 0, 26, -1.25, 1.25).strokePath();
+      fx.lineStyle(9, 0xffd75e, 1).beginPath().arc(0, 0, 26, -1.25, 1.25).strokePath();
+      fx.lineStyle(3, 0xffffff, 1).beginPath().arc(0, 0, 26, -1.25, 1.25).strokePath();
+    }
+    this.scene.tweens.add({ targets: fx, alpha: 0, duration: 220, onComplete: () => fx.destroy() });
+  }
+
+  private damageNumber(team: Team, dmg: number, now: number, cur: MatchState): void {
+    const previous = this.damageNumbers.get(team);
+    if (previous && now - previous.at < 150) {
+      previous.dmg += dmg;
+      previous.text.setText(`-${Math.round(previous.dmg)}`);
+      return;
+    }
+    const at = worldToStage(cur.stalls[team].pos);
+    const text = this.scene.add
+      .text(at.x - 16, Math.max(72, at.y - 60), `-${Math.round(dmg)}`, {
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '34px',
+        fontStyle: 'bold',
+        color: '#fff3b0',
+        stroke: '#251414',
+        strokeThickness: 6,
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(1000)
+      .setName(`stall-damage-${team}`);
+    const entry = { text, at: now, dmg };
+    this.damageNumbers.set(team, entry);
+    this.scene.tweens.add({
+      targets: text,
+      y: text.y - 24,
+      alpha: 0,
+      duration: 600,
+      onComplete: () => {
+        text.destroy();
+        if (this.damageNumbers.get(team) === entry) this.damageNumbers.delete(team);
+      },
+    });
   }
 
   private syncPads(cur: MatchState): void {
@@ -351,6 +426,13 @@ export class MatchView {
     // spawns duplicate sparks/explosions; a seed reset must release the guard.
     if (cur.tick === this.lastEventTick) return;
     if (cur.tick < this.lastEventTick) {
+      for (const child of [...this.scene.children.list]) {
+        if (child.name.startsWith('stall-damage-') || child.name.startsWith('attack-slash-')) {
+          this.scene.tweens.killTweensOf(child);
+          child.destroy();
+        }
+      }
+      this.damageNumbers.clear();
       for (const sprite of Object.values(this.stallSprites)) {
         sprite.setData({ flashUntil: 0, shakeAt: -Infinity });
       }
@@ -376,6 +458,7 @@ export class MatchView {
         const view = this.units.get(event.target);
         if (view) view.hurtUntil = now + HURT_FLASH_MS;
       } else if (event.kind === 'hit' && (event.target === 'fruit' || event.target === 'dessert')) {
+        this.damageNumber(event.target, Number(event.dmg), now, cur);
         this.stallHit(cur, event.target, now);
       }
     }

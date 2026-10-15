@@ -18,6 +18,7 @@ export interface StallFeedback {
   x: number;
   y: number;
   sparks: number;
+  damage: { text: string; y: number; alpha: number; screenFont: number }[];
 }
 
 /** window.__talad — Playwright drives matches through these (plan Task 8).
@@ -39,6 +40,7 @@ export interface TaladTestHooks {
     y: number;
     width: number;
     flipX: boolean;
+    slash: { kind: string; screenSize: number; alpha: number } | null;
   };
   stallFeedback(team: Team): StallFeedback;
   state(): MatchState;
