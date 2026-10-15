@@ -51,32 +51,71 @@ test('audio: a real bomb explosion ducks music to 0.12 and restores 0.3 after 40
   await page.clock.install();
   await page.goto('/?seed=7');
   await waitHooks(page);
+  // Own the clock after boot: slow CI rendering must not decide how many
+  // simulation ticks fit inside a wall-time expect.poll timeout.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
   const driver = mobile()
     ? await joyDriver(page, await page.context().newCDPSession(page))
     : await keyDriver(page);
   await page.evaluate(() => {
+    window.__talad.setSeed(7);
     window.__talad.setCommand('fruit', 'guard');
     window.__talad.setCommand('dessert', 'guard');
     window.__talad.setPadCrates('fruit', [0, 1]);
     window.__talad.placeUnit(0, 8.75, 18.75);
   });
+  await page.clock.runFor(50); // render the touch Open! control before input
   if (mobile()) await expect(page.locator('#tw-btn-open')).toBeVisible();
-  await driver.open();
-  await expect.poll(async () => (await getState(page)).units[0]!.bombs).toBe(3);
+  await driver.open(); // trusted gesture unlocks audio; the input pulse waits for a tick
   await expect.poll(() => page.evaluate(() => window.__talad.audioReady())).toBe(true);
+  await expect
+    .poll(
+      async () => {
+        await page.clock.runFor(50);
+        return page.evaluate(() =>
+          window.__talad.audioLog().some((e) => e.key === 'openStarted' && e.started),
+        );
+      },
+      { intervals: [0], timeout: 20_000 },
+    )
+    .toBe(true);
+  // Complete the REAL 20-tick recipe, independent of wall-time rendering speed.
+  await page.evaluate(() => window.__talad.fastForward(20));
+  expect((await getState(page)).units[0]!.bombs).toBe(3);
+  expect(
+    await page.evaluate(() =>
+      window.__talad.audioLog().some((e) => e.key === 'opened' && e.started),
+    ),
+  ).toBe(true);
+  await page.clock.runFor(50); // syncUi renders Throw after the recipe completes
+  if (mobile()) await expect(page.locator('#tw-btn-throw')).toBeVisible();
   await driver.throwBomb();
   await expect
     .poll(
-      () =>
-        page.evaluate(() =>
-          window.__talad.audioLog().some((e) => e.key === 'explosion' && e.started),
-        ),
-      { intervals: [20] },
+      async () => {
+        await page.clock.runFor(50);
+        return (await getState(page)).units[0]!.bombs;
+      },
+      { intervals: [0], timeout: 20_000 },
     )
-    .toBe(true);
+    .toBe(2);
+  expect(
+    await page.evaluate(() =>
+      window.__talad.audioLog().some((e) => e.key === 'throw' && e.started),
+    ),
+  ).toBe(true);
+  // Advance the real projectile's 24-tick fuse, not an injected explosion.
+  // The browser clock stays paused: the duck timeout starts at this exact instant.
+  await page.evaluate(() => window.__talad.fastForward(24));
+  expect(
+    await page.evaluate(
+      () => window.__talad.audioLog().filter((e) => e.key === 'explosion' && e.started).length,
+    ),
+  ).toBe(1);
+  expect(await page.evaluate(() => window.__talad.musicGain())).toBe(0.12);
   // Advance the intercepted real duck timer, not a test-only mixer shortcut.
-  const gain = await page.evaluate(() => window.__talad.musicGain());
-  expect(gain).toBe(0.12);
-  await page.clock.runFor(400);
+  await page.clock.runFor(399);
+  expect(await page.evaluate(() => window.__talad.musicGain())).toBe(0.12);
+  await page.clock.runFor(1);
   expect(await page.evaluate(() => window.__talad.musicGain())).toBe(0.3);
 });
