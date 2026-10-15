@@ -1,4 +1,4 @@
-import { th } from '../i18n/th';
+import { createActionButtons } from '../hud/buttons';
 import type { Vec2 } from '@talad/sim';
 
 const JOY_RADIUS = 56; // css px — knob travel; move vec = delta / JOY_RADIUS
@@ -14,7 +14,9 @@ export interface TouchRead {
 /**
  * Mobile touch controls as a DOM overlay (joystick on the left half, action
  * buttons bottom-right). DOM — not Phaser — so e2e can select buttons, measure
- * the ≥ 56 px approved token size, and drive multi-touch via CDP.
+ * the approved sizes, and drive multi-touch via CDP. The button elements come
+ * from hud/buttons.ts (Task 9 mockup restyle); this class keeps the input
+ * semantics.
  */
 export class TouchControls {
   readonly root: HTMLDivElement;
@@ -49,13 +51,12 @@ export class TouchControls {
     this.joyBase.appendChild(this.joyKnob);
     this.zone.appendChild(this.joyBase);
 
-    this.fireBtn = makeButton('tw-btn-fire', th.fire);
-    this.pickBtn = makeButton('tw-btn-pick', th.pickDrop);
-    this.openBtn = makeButton('tw-btn-open', th.open);
-    this.throwBtn = makeButton('tw-btn-throw', th.throwBomb);
-    this.throwCount = document.createElement('span');
-    this.throwCount.className = 'tw-throw-count';
-    this.throwBtn.appendChild(this.throwCount);
+    const actions = createActionButtons();
+    this.fireBtn = actions.fire;
+    this.pickBtn = actions.pick;
+    this.throwBtn = actions.throwBtn;
+    this.openBtn = actions.open;
+    this.throwCount = actions.throwCount;
 
     this.root.append(this.zone, this.pickBtn, this.openBtn, this.throwBtn, this.fireBtn);
     mount.appendChild(this.root);
@@ -154,15 +155,6 @@ export class TouchControls {
   private moveKnob(dx: number, dy: number): void {
     this.joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
   }
-}
-
-function makeButton(id: string, label: string): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.id = id;
-  btn.className = 'tw-btn';
-  btn.type = 'button';
-  btn.textContent = label;
-  return btn;
 }
 
 export function isTouchDevice(): boolean {
