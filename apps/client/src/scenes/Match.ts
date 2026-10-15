@@ -198,6 +198,16 @@ export class MatchScene extends Phaser.Scene {
                 const text = child as Phaser.GameObjects.Text;
                 return {
                   text: text.text,
+                  screenBounds: (() => {
+                    const bounds = text.getBounds();
+                    const canvas = this.game.canvas.getBoundingClientRect();
+                    return {
+                      x: canvas.x + bounds.x / this.scale.displayScale.x,
+                      y: canvas.y + bounds.y / this.scale.displayScale.y,
+                      width: bounds.width / this.scale.displayScale.x,
+                      height: bounds.height / this.scale.displayScale.y,
+                    };
+                  })(),
                   y: text.y,
                   alpha: text.alpha,
                   screenFont:

@@ -228,27 +228,32 @@ export class MatchView {
       y: clampDrawY(at.y) - 32 + unit.facing.y * 20,
     });
     fx.setName(name).setDepth(950).setRotation(Math.atan2(unit.facing.y, unit.facing.x));
-    fx.setData({ kind: unit.gun ? 'gun' : 'slap', size: 60 });
+    fx.setData({ kind: unit.gun ? 'gun' : 'slap', size: 96 });
     if (unit.gun) {
       const points = [
         32, 0, 12, 9, 10, 28, -1, 13, -24, 18, -11, 0, -24, -18, -1, -13, 10, -28, 12, -9,
       ];
-      fx.fillStyle(0xffd75e, 1).lineStyle(5, 0x382015, 1);
-      fx.fillPoints(
-        points.reduce<Phaser.Math.Vector2[]>((out, _, i) => {
-          if (i % 2 === 0) out.push(new Phaser.Math.Vector2(points[i]!, points[i + 1]!));
-          return out;
-        }, []),
-        true,
-      );
-      fx.strokePath();
+      const vertices = points.reduce<Phaser.Math.Vector2[]>((out, _, i) => {
+        if (i % 2 === 0) out.push(new Phaser.Math.Vector2(points[i]! * 1.5, points[i + 1]! * 1.5));
+        return out;
+      }, []);
+      fx.fillStyle(0xffd75e, 1).lineStyle(7, 0x251414, 1);
+      fx.fillPoints(vertices, true).strokePoints(vertices, true);
       fx.fillStyle(0xffffff, 1).fillCircle(4, 0, 10);
     } else {
-      fx.lineStyle(14, 0x382015, 1).beginPath().arc(0, 0, 26, -1.25, 1.25).strokePath();
-      fx.lineStyle(9, 0xffd75e, 1).beginPath().arc(0, 0, 26, -1.25, 1.25).strokePath();
-      fx.lineStyle(3, 0xffffff, 1).beginPath().arc(0, 0, 26, -1.25, 1.25).strokePath();
+      fx.lineStyle(18, 0x251414, 1).beginPath().arc(0, 0, 38, -1.9, 1.9).strokePath();
+      fx.lineStyle(12, 0xffd75e, 1).beginPath().arc(0, 0, 38, -1.9, 1.9).strokePath();
+      fx.lineStyle(5, 0xffffff, 1).beginPath().arc(0, 0, 38, -1.9, 1.9).strokePath();
     }
-    this.scene.tweens.add({ targets: fx, alpha: 0, duration: 220, onComplete: () => fx.destroy() });
+    // Hold the high-contrast silhouette through most of the attack, not just
+    // its first frame. A linear fade from frame one was barely readable.
+    this.scene.tweens.add({
+      targets: fx,
+      alpha: 0,
+      delay: 160,
+      duration: 60,
+      onComplete: () => fx.destroy(),
+    });
   }
 
   private damageNumber(team: Team, dmg: number, now: number, cur: MatchState): void {
@@ -271,6 +276,21 @@ export class MatchView {
       .setOrigin(0.5, 1)
       .setDepth(1000)
       .setName(`stall-damage-${team}`);
+    // Phaser depth cannot overdraw the DOM HP bars. Reserve room for the
+    // entire upward tween in screen pixels, accounting for letterboxing.
+    const canvas = this.scene.game.canvas.getBoundingClientRect();
+    const bounds = text.getBounds();
+    const scaleX = canvas.width / this.scene.scale.width;
+    const scaleY = canvas.height / this.scene.scale.height;
+    const left = canvas.x + bounds.x * scaleX;
+    const right = left + bounds.width * scaleX;
+    for (const hud of document.querySelectorAll('.tw-hp')) {
+      const rect = hud.getBoundingClientRect();
+      if (left < rect.right && right > rect.left) {
+        const safeTop = (rect.bottom + 8 - canvas.y) / scaleY;
+        text.y = Math.max(text.y, safeTop + bounds.height + 24);
+      }
+    }
     const entry = { text, at: now, dmg };
     this.damageNumbers.set(team, entry);
     this.scene.tweens.add({

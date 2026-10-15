@@ -1,6 +1,58 @@
 import { expect, test } from '@playwright/test';
 import { waitHooks } from './helpers';
 
+// Catches text that exists in Phaser but is clipped or covered by the DOM HUD.
+for (const team of ['fruit', 'dessert'] as const) {
+  test(`${team} damage stays visibly below the HP HUD throughout its rise`, async ({ page }) => {
+    await page.clock.install();
+    await page.goto('/?seed=43');
+    await waitHooks(page);
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+    await page.evaluate(() => {
+      const h = window.__talad;
+      h.setSeed(43);
+      h.setCommand('fruit', 'attack');
+      h.setCommand('dessert', 'attack');
+      h.placeUnit(1, 32.3, 4.4);
+      h.placeUnit(2, 33.7, 6.7);
+      h.placeUnit(3, 7.7, 21.4);
+      h.placeUnit(4, 7.7, 19.6);
+      h.placeUnit(5, 6.3, 17.3);
+      h.fastForward(1);
+      h.setCommand('fruit', 'guard');
+      h.setCommand('dessert', 'guard');
+      for (let id = 1; id <= 5; id++) h.placeUnit(id, 20, 10 + id);
+    });
+    for (const elapsed of [16, 304, 240]) {
+      await page.clock.runFor(elapsed);
+      const sample = await page.evaluate((target) => {
+        const fx = window.__talad.stallFeedback(target);
+        const hud = [...document.querySelectorAll('.tw-hp')].map((element) => {
+          const r = element.getBoundingClientRect();
+          return { x: r.x, y: r.y, width: r.width, height: r.height };
+        });
+        return { damage: fx.damage, hud, width: innerWidth, height: innerHeight };
+      }, team);
+      expect(sample.damage).toHaveLength(1);
+      const number = sample.damage[0]!;
+      const b = number.screenBounds;
+      expect(number.screenFont).toBeGreaterThanOrEqual(16);
+      expect(b.x).toBeGreaterThanOrEqual(0);
+      expect(b.y).toBeGreaterThanOrEqual(0);
+      expect(b.x + b.width).toBeLessThanOrEqual(sample.width);
+      expect(b.y + b.height).toBeLessThanOrEqual(sample.height);
+      for (const hud of sample.hud) {
+        const overlapsX = b.x < hud.x + hud.width && b.x + b.width > hud.x;
+        if (overlapsX) expect(b.y).toBeGreaterThanOrEqual(hud.y + hud.height + 8);
+      }
+      await test.info().attach(`${team}-rise-${elapsed}`, {
+        body: await page.screenshot(),
+        contentType: 'image/png',
+      });
+    }
+  });
+}
+
 test('stall damage numbers round real damage, merge for 150ms, rise and fade in 600ms', async ({
   page,
 }) => {
@@ -88,7 +140,11 @@ test('real slaps lunge toward the stall once per tick then return to normal size
   expect(peak.fx.width).toBeGreaterThan(94);
   expect(peak.fx.flipX).toBe(false);
   expect(peak.fx.attackAt).toBe(first.fx.attackAt);
-  await page.clock.runFor(208); // 220ms lunge plus one RAF margin
+  await page.clock.runFor(80);
+  expect(
+    (await page.evaluate(() => window.__talad.unitFeedback(1))).slash!.alpha,
+  ).toBeGreaterThanOrEqual(0.85);
+  await page.clock.runFor(128); // 220ms lunge plus one RAF margin
   const end = await page.evaluate(() => window.__talad.unitFeedback(1));
   expect(end.width).toBe(92);
 });
