@@ -281,10 +281,20 @@ function attackPlan(s: MatchState, unit: Unit, ti: number): BotPlan {
         break;
       }
     }
+    // Move the reserved station itself: a fixed station's tiny bounded mill
+    // converges below 0.1 tile/200ms and reads as idle. A tangent-led oval stays
+    // inside slap range without drifting into the neighbouring slot. Phase is
+    // team-index keyed and evaluated in canonical space for exact rotation.
+    const phase = ((s.tick + ti * 7) / 24) * Math.PI * 2;
+    const side = at.x < canonical.minX || at.x > canonical.maxX;
+    at = {
+      x: at.x + (side ? 0.12 : 0.4) * Math.cos(phase),
+      y: at.y + (side ? 0.4 : 0.12) * Math.sin(phase),
+    };
     return {
       target: unit.team === 'fruit' ? at : { x: ARENA_W - at.x, y: ARENA_H - at.y },
-      arriveRadius: 0.25,
-      millSpeed: 0.25,
+      arriveRadius: 0.06,
+      millSpeed: 0,
       boundedMill: true,
       aim: nr, // movement no longer makes a slapper face away from its attack
       pickDrop: false,
@@ -356,6 +366,9 @@ function bombAtStall(s: MatchState, unit: Unit, distToStall: number, ti: number)
 function steer(unit: Unit, plan: BotPlan, tick: number, ti: number): Vec2 {
   const to = { x: plan.target.x - unit.pos.x, y: plan.target.y - unit.pos.y };
   const d = Math.hypot(to.x, to.y);
+  // Reserved moving stations need direct tracking, not approach veer: the
+  // perpendicular bias swings a face strafe toward defenders/the stall.
+  if (plan.boundedMill) return vecClampLength({ x: to.x * 5, y: to.y * 5 }, 0.8);
   if (d > plan.arriveRadius) {
     const sign = (Math.floor(tick / VEER_TICKS) + ti) % 2 === 0 ? 1 : -1;
     return vecNormalize({
