@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { STALL_MAX_HP, TICK_HZ, canOpen, createMatch, padCellCenter, step } from '@talad/sim';
 import type { MatchState, SquadCommand, Team, UnitId, UnitInput, Vec2 } from '@talad/sim';
+import { AudioMixer, sfxForTick } from '../audio';
+import type { SfxKey } from '../audio';
 import { AimMarker } from '../hud/aimMarker';
 import { SquadCommands } from '../hud/commands';
 import { MatchHud } from '../hud/status';
@@ -13,7 +15,7 @@ import { TouchControls, isTouchDevice } from '../input/touch';
 import { FixedLoop } from '../loop';
 import { MatchView } from '../render/view';
 import { stageToWorld } from '../render/world';
-import type { TaladTestHooks } from '../testHooks';
+import type { AudioLogEntry, TaladTestHooks } from '../testHooks';
 
 const HUMAN_UNIT: UnitId = 0;
 
@@ -52,6 +54,8 @@ export class MatchScene extends Phaser.Scene {
   private aim: Vec2 | null = null;
   private fireHeld = false;
   private command: Partial<Record<Team, SquadCommand>> = {};
+  private audio = new AudioMixer();
+  private observeAudio: ((key: SfxKey, started: boolean) => void) | null = null;
 
   constructor() {
     super('match');
@@ -62,6 +66,19 @@ export class MatchScene extends Phaser.Scene {
     if (!mount) throw new Error('MatchScene: #app mount missing');
     this.state = createMatch(data?.seed ?? 1);
     this.prevState = structuredClone(this.state);
+
+    // Capture DOM controls too: touch buttons stop propagation before Phaser.
+    const unlock = (event: Event) => {
+      if (event.isTrusted) void this.audio.unlock();
+    };
+    document.addEventListener('pointerdown', unlock, { capture: true });
+    document.addEventListener('keydown', unlock, { capture: true });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      document.removeEventListener('pointerdown', unlock, true);
+      document.removeEventListener('keydown', unlock, true);
+      this.audio.dispose();
+      this.observeAudio = null;
+    });
 
     this.view = new MatchView(this);
     this.hudRoot = document.createElement('div');
@@ -100,18 +117,33 @@ export class MatchScene extends Phaser.Scene {
     window.addEventListener('keyup', (e) => this.keyboard.handleKey(e.code, false));
 
     if (TEST_HOOKS_ENABLED) {
+      const audioLog: AudioLogEntry[] = [];
+      this.observeAudio = (key, started) => {
+        audioLog.push({
+          key,
+          tick: this.state.tick,
+          timeMs: performance.now(),
+          started,
+          musicGain: this.audio.musicGain,
+        });
+      };
       const hooks: TaladTestHooks = {
+        audioLog: () => structuredClone(audioLog),
+        audioReady: () => this.audio.isReady,
+        musicGain: () => this.audio.musicGain,
         state: () => structuredClone(this.state),
         setSeed: (seed: number) => {
           this.state = createMatch(seed);
           this.prevState = structuredClone(this.state);
           this.command = {};
+          audioLog.length = 0;
           this.syncAll();
         },
         fastForward: (ticks: number) => {
           for (let i = 0; i < ticks; i++) {
             this.prevState = this.state;
             this.state = step(this.state, new Map(), this.command);
+            this.playTickAudio();
           }
           this.syncAll();
         },
@@ -168,6 +200,7 @@ export class MatchScene extends Phaser.Scene {
     for (let i = 0; i < ticks; i++) {
       this.prevState = this.state;
       this.state = step(this.state, this.humanInputs(), this.command);
+      this.playTickAudio();
     }
     this.syncAll(this.loop.alpha());
     const human = this.state.units[HUMAN_UNIT];
@@ -176,6 +209,15 @@ export class MatchScene extends Phaser.Scene {
       human?.bombs ?? 0,
       this.state.winner !== null,
     );
+  }
+
+  private playTickAudio(): void {
+    // step() preserves terminal events; never repeat the winner jingle per frame.
+    if (this.prevState.winner !== null) return;
+    for (const key of sfxForTick(this.prevState, this.state)) {
+      const started = this.audio.play(key);
+      this.observeAudio?.(key, started);
+    }
   }
 
   /** One render sync of the view and every HUD piece from the current state. */
