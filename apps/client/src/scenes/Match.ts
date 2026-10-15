@@ -1,7 +1,13 @@
 import Phaser from 'phaser';
-import { TICK_HZ, canOpen, createMatch, step } from '@talad/sim';
+import { STALL_MAX_HP, TICK_HZ, canOpen, createMatch, padCellCenter, step } from '@talad/sim';
 import type { MatchState, SquadCommand, Team, UnitId, UnitInput, Vec2 } from '@talad/sim';
+import { AimMarker } from '../hud/aimMarker';
+import { SquadCommands } from '../hud/commands';
 import { MatchHud } from '../hud/status';
+import { PreviewText } from '../hud/padPreview';
+import { PadGlow } from '../hud/padGlow';
+import { StallBars } from '../hud/stallBars';
+import { MatchTimer } from '../hud/timer';
 import { KeyboardInput } from '../input/keyboard';
 import { TouchControls, isTouchDevice } from '../input/touch';
 import { FixedLoop } from '../loop';
@@ -14,9 +20,17 @@ const HUMAN_UNIT: UnitId = 0;
 /** Static at build time: the prod bundle folds this block (and `__talad`) away. */
 const TEST_HOOKS_ENABLED = import.meta.env.VITE_TEST_HOOKS === '1';
 
+/** Desktop squad-command keys (card: Digit1/2/3 mirror the three buttons). */
+const COMMAND_KEYS: Record<string, 'attack' | 'guard' | 'fetch'> = {
+  Digit1: 'attack',
+  Digit2: 'guard',
+  Digit3: 'fetch',
+};
+
 /**
  * The playable match: fixed 20 Hz sim stepping inside the render loop,
- * interpolated rendering, keyboard + touch controls, minimal HUD overlay.
+ * interpolated rendering, keyboard + touch controls, and the Task 9 HUD
+ * overlay (stall bars, timer, squad commands, pad preview + glow, aim marker).
  * Review Focus 5: document.hidden freezes the sim; the FixedLoop clamps any
  * catch-up burst to 5 ticks.
  */
@@ -26,7 +40,14 @@ export class MatchScene extends Phaser.Scene {
   private readonly loop = new FixedLoop(TICK_HZ, 5);
   private readonly keyboard = new KeyboardInput();
   private view!: MatchView;
+  private hudRoot!: HTMLElement;
   private hud!: MatchHud;
+  private stallBars!: StallBars;
+  private timer!: MatchTimer;
+  private commandsUi!: SquadCommands;
+  private preview!: PreviewText;
+  private glow!: PadGlow;
+  private aimMarker!: AimMarker;
   private touch: TouchControls | null = null;
   private aim: Vec2 | null = null;
   private fireHeld = false;
@@ -43,7 +64,19 @@ export class MatchScene extends Phaser.Scene {
     this.prevState = structuredClone(this.state);
 
     this.view = new MatchView(this);
-    this.hud = new MatchHud(mount);
+    this.hudRoot = document.createElement('div');
+    this.hudRoot.className = 'tw-screen-hud';
+    mount.appendChild(this.hudRoot);
+    this.stallBars = new StallBars(this.hudRoot);
+    this.timer = new MatchTimer(this.hudRoot);
+    this.commandsUi = new SquadCommands(this.hudRoot, (cmd) => {
+      // Merge (not overwrite): the dessert command must survive a fruit toggle.
+      this.command = { ...this.command, fruit: cmd };
+    });
+    this.preview = new PreviewText(this.hudRoot);
+    this.hud = new MatchHud(this.hudRoot);
+    this.glow = new PadGlow(this);
+    this.aimMarker = new AimMarker(this);
     if (isTouchDevice()) this.touch = new TouchControls(mount);
 
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
@@ -59,7 +92,11 @@ export class MatchScene extends Phaser.Scene {
     this.input.on('pointerupoutside', () => {
       this.fireHeld = false;
     });
-    window.addEventListener('keydown', (e) => this.keyboard.handleKey(e.code, true));
+    window.addEventListener('keydown', (e) => {
+      this.keyboard.handleKey(e.code, true);
+      const cmd = COMMAND_KEYS[e.code];
+      if (cmd) this.commandsUi.request(cmd);
+    });
     window.addEventListener('keyup', (e) => this.keyboard.handleKey(e.code, false));
 
     if (TEST_HOOKS_ENABLED) {
@@ -69,16 +106,14 @@ export class MatchScene extends Phaser.Scene {
           this.state = createMatch(seed);
           this.prevState = structuredClone(this.state);
           this.command = {};
-          this.view.sync(this.prevState, this.state, 0);
-          this.hud.sync(this.state);
+          this.syncAll();
         },
         fastForward: (ticks: number) => {
           for (let i = 0; i < ticks; i++) {
             this.prevState = this.state;
             this.state = step(this.state, new Map(), this.command);
           }
-          this.view.sync(this.prevState, this.state, 0);
-          this.hud.sync(this.state);
+          this.syncAll();
         },
         setCommand: (team: Team, cmd: SquadCommand) => {
           // Merge: callers park both teams one call at a time (overwriting the
@@ -90,8 +125,37 @@ export class MatchScene extends Phaser.Scene {
           if (!unit) return;
           unit.pos = { x, y };
           this.prevState = structuredClone(this.state);
-          this.view.sync(this.prevState, this.state, 0);
-          this.hud.sync(this.state);
+          this.syncAll();
+        },
+        setPadCrates: (team: Team, cols: number[]) => {
+          const pad = this.state.pads[team];
+          // Drop crates this hook staged earlier so re-staging leaves no orphans.
+          const stale = new Set<number>();
+          for (const column of pad.cells) {
+            for (const id of column) if (id !== null) stale.add(id);
+          }
+          this.state.crates = this.state.crates.filter((c) => !stale.has(c.id));
+          for (const column of pad.cells) {
+            column[0] = null;
+            column[1] = null;
+          }
+          for (const col of cols) {
+            const column = pad.cells[col];
+            if (!column) continue;
+            const id = this.state.nextId++;
+            column[0] = id; // ground layer
+            this.state.crates.push({
+              id,
+              pos: padCellCenter(pad, col),
+              state: 'onPad',
+              landTick: this.state.tick,
+            });
+          }
+          this.syncAll();
+        },
+        setStallHp: (team: Team, hp: number) => {
+          this.state.stalls[team].hp = Math.max(0, Math.min(STALL_MAX_HP, Math.round(hp)));
+          this.syncAll();
         },
       };
       (window as unknown as { __talad: TaladTestHooks }).__talad = hooks;
@@ -105,13 +169,24 @@ export class MatchScene extends Phaser.Scene {
       this.prevState = this.state;
       this.state = step(this.state, this.humanInputs(), this.command);
     }
-    this.view.sync(this.prevState, this.state, this.loop.alpha());
+    this.syncAll(this.loop.alpha());
     const human = this.state.units[HUMAN_UNIT];
     this.touch?.syncUi(
       human ? canOpen(this.state, HUMAN_UNIT) : false,
       human?.bombs ?? 0,
       this.state.winner !== null,
     );
+  }
+
+  /** One render sync of the view and every HUD piece from the current state. */
+  private syncAll(alpha = 0): void {
+    this.view.sync(this.prevState, this.state, alpha);
+    this.stallBars.sync(this.state);
+    this.timer.sync(this.state);
+    this.commandsUi.setActive(this.state.commands.fruit ?? null);
+    this.preview.sync(this.state);
+    this.glow.sync(this.state);
+    this.aimMarker.sync(this.state);
     this.hud.sync(this.state);
   }
 

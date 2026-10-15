@@ -14,4 +14,11 @@ export interface TaladTestHooks {
   setCommand(team: Team, cmd: SquadCommand): void;
   /** Teleport a unit (review round 1 #1: deterministic staging, no chase loops). */
   placeUnit(unitId: number, x: number, y: number): void;
+  /**
+   * Task 9 staging: clear the team's pad then place ground-layer crates in the
+   * given columns (real crate objects, `state: 'onPad'` at the cell center).
+   */
+  setPadCrates(team: Team, cols: number[]): void;
+  /** Task 9 staging: set a stall's HP (clamped to 0..STALL_MAX_HP). */
+  setStallHp(team: Team, hp: number): void;
 }
