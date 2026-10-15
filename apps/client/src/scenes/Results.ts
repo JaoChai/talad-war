@@ -37,7 +37,8 @@ export class ResultsScene extends Phaser.Scene {
         label.textContent = th[key];
         const value = document.createElement('dd');
         value.dataset.stat = key;
-        value.textContent = String(data.stats[team][key]);
+        const exact = data.stats[team][key];
+        value.textContent = String(key === 'stallDamage' ? Math.round(exact) : exact);
         row.append(label, value);
         section.querySelector('dl')!.append(row);
       }

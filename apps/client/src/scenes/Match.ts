@@ -44,7 +44,7 @@ export class MatchScene extends Phaser.Scene {
   private loop = new FixedLoop(TICK_HZ, 5);
   private keyboard = new KeyboardInput();
   private stats = emptyStats();
-  private resultsTimer: Phaser.Time.TimerEvent | null = null;
+  private resultsTimer: number | null = null;
   private view!: MatchView;
   private hudRoot!: HTMLElement;
   private hud!: MatchHud;
@@ -87,6 +87,8 @@ export class MatchScene extends Phaser.Scene {
     document.addEventListener('pointerdown', unlock, { capture: true });
     document.addEventListener('keydown', unlock, { capture: true });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      if (this.resultsTimer !== null) window.clearTimeout(this.resultsTimer);
+      this.resultsTimer = null;
       document.removeEventListener('pointerdown', unlock, true);
       document.removeEventListener('keydown', unlock, true);
       this.audio.dispose();
@@ -164,7 +166,7 @@ export class MatchScene extends Phaser.Scene {
           this.prevState = structuredClone(this.state);
           this.command = {};
           this.stats = emptyStats();
-          this.resultsTimer?.remove(false);
+          if (this.resultsTimer !== null) window.clearTimeout(this.resultsTimer);
           this.resultsTimer = null;
           audioLog.length = 0;
           this.syncAll();
@@ -263,15 +265,16 @@ export class MatchScene extends Phaser.Scene {
     this.glow.sync(this.state);
     this.aimMarker.sync(this.state);
     this.hud.sync(this.state);
-    if (this.state.winner !== null && !this.resultsTimer) {
-      // Let the existing banner/jingle play before handing off the final tally.
-      this.resultsTimer = this.time.delayedCall(1200, () => {
+    if (this.state.winner !== null && this.resultsTimer === null) {
+      // Banner/jingle duration is wall time, not Phaser's smoothed scene delta
+      // (initial slow frames can stretch a scene-clock second to many seconds).
+      this.resultsTimer = window.setTimeout(() => {
         this.scene.start('results', {
           winner: this.state.winner,
           seed: this.state.seed,
           stats: this.stats,
         });
-      });
+      }, 1200);
     }
   }
 

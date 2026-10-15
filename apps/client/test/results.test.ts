@@ -33,6 +33,21 @@ function sequence(): MatchState[] {
 }
 
 describe('tallyStats', () => {
+  it('keeps fractional stall damage exact for display-only rounding', () => {
+    const prev = createMatch(7);
+    const cur = structuredClone(prev);
+    cur.tick = 1;
+    cur.events = [
+      { tick: 1, kind: 'hit', target: 'fruit', dmg: 12.5 },
+      { tick: 1, kind: 'hit', target: 'fruit', dmg: 4.25 },
+    ];
+    expect(tallyStats(emptyStats(), prev, cur).dessert).toEqual({
+      cratesPlaced: 0,
+      itemsBuilt: 0,
+      stallDamage: 16.75,
+    });
+  });
+
   it('counts opened, stall damage and pad additions across three ticks without mutation', () => {
     const states = sequence();
     let stats = emptyStats();

@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { enterMatch, getState, waitHooks } from './helpers';
+import type { MatchStats } from '../src/stats';
 
 async function title(page: Page): Promise<void> {
   await page.goto('/?seed=7');
@@ -8,13 +9,51 @@ async function title(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'ตลาดวอร์', exact: true })).toBeVisible();
 }
 
-async function finish(page: Page, winner: 'fruit' | 'dessert' | 'draw' = 'fruit'): Promise<void> {
-  await page.evaluate((winner) => {
-    if (winner !== 'dessert') window.__talad.setStallHp('dessert', 0);
-    if (winner !== 'fruit') window.__talad.setStallHp('fruit', 0);
-    window.__talad.fastForward(1);
-  }, winner);
+async function finish(
+  page: Page,
+  winner: 'fruit' | 'dessert' | 'draw' = 'fruit',
+  warmupTicks = 0,
+): Promise<MatchStats> {
+  const stats = await page.evaluate(
+    ({ winner, warmupTicks }) => {
+      if (warmupTicks) {
+        window.__talad.setSeed(7);
+        window.__talad.fastForward(warmupTicks);
+      }
+      const started = performance.now();
+      delete document.documentElement.dataset.handoffMs;
+      const observer = new MutationObserver(() => {
+        if (!document.querySelector('[data-screen="results"]')) return;
+        document.documentElement.dataset.handoffMs = String(performance.now() - started);
+        observer.disconnect();
+      });
+      observer.observe(document.getElementById('app')!, { childList: true, subtree: true });
+      if (winner !== 'dessert') window.__talad.setStallHp('dessert', 0);
+      if (winner !== 'fruit') window.__talad.setStallHp('fruit', 0);
+      window.__talad.fastForward(1);
+      // Check the banner synchronously: a slow test driver must not miss it.
+      if (document.querySelector<HTMLElement>('.tw-winner')?.hidden !== false)
+        throw new Error('winner banner missing before Results');
+      return window.__talad.stats();
+    },
+    { winner, warmupTicks },
+  );
   await expect(page.locator('[data-screen="results"]')).toBeVisible({ timeout: 2500 });
+  const elapsedMs = await page.evaluate(() => Number(document.documentElement.dataset.handoffMs));
+  console.log(`winner → Results: ${elapsedMs}ms`);
+  expect(elapsedMs).toBeGreaterThanOrEqual(1100);
+  expect(elapsedMs).toBeLessThanOrEqual(2000);
+  return stats;
+}
+
+// Model a slow software-rendered device from its first frame. Phaser's initial
+// delta smoothing must not stretch the real-time winner banner duration.
+async function slowFrames(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const request = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (callback) =>
+      request(() => window.setTimeout(() => callback(performance.now()), 100));
+  });
 }
 
 async function screenCheck(page: Page, info: TestInfo, screen: string): Promise<void> {
@@ -61,21 +100,21 @@ test('fresh storage: Title, skippable how-to, scored Results, replay tick zero w
   await page.getByRole('button', { name: 'ข้าม', exact: true }).click();
   await waitHooks(page);
   // Every stepped tick feeds stats, including fastForward's multi-tick loop.
-  await page.evaluate(() => window.__talad.fastForward(1600));
-  const stats = await page.evaluate(() => window.__talad.stats());
+  const seed = (await getState(page)).seed;
+  const stats = await finish(page, 'fruit', 1600);
+  expect(stats.dessert.stallDamage).toBe(1828.5);
   expect(stats.fruit.cratesPlaced + stats.dessert.cratesPlaced).toBeGreaterThan(0);
   expect(stats.fruit.itemsBuilt + stats.dessert.itemsBuilt).toBeGreaterThan(0);
   expect(stats.fruit.stallDamage + stats.dessert.stallDamage).toBeGreaterThan(0);
-  const seed = (await getState(page)).seed;
-  await finish(page);
   await expect(page.getByRole('heading', { name: 'ทีมผลไม้ชนะ!', exact: true })).toBeVisible();
   for (const team of ['fruit', 'dessert'] as const) {
     for (const key of ['cratesPlaced', 'itemsBuilt', 'stallDamage'] as const) {
       await expect(page.locator(`[data-team="${team}"] [data-stat="${key}"]`)).toHaveText(
-        String(stats[team][key]),
+        String(key === 'stallDamage' ? Math.round(stats[team][key]) : stats[team][key]),
       );
     }
   }
+  await expect(page.locator('[data-team="dessert"] [data-stat="stallDamage"]')).toHaveText('1829');
   await screenCheck(page, info, 'results');
   await page.clock.install();
   await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
@@ -124,6 +163,7 @@ test('three Thai how-to cards complete once and the next visit skips them', asyn
 test('sound off persists through reload and replay, on restores the next match music gain', async ({
   page,
 }) => {
+  await slowFrames(page);
   await title(page);
   await page.getByRole('button', { name: 'เสียง: เปิด', exact: true }).click();
   expect(await page.evaluate(() => localStorage.getItem('tw.sound'))).toBe('off');
@@ -173,6 +213,7 @@ test('touch portrait pauses at the same tick, landscape resumes; desktop never p
 });
 
 test('denied browser storage does not prevent starting or replaying', async ({ page }) => {
+  await slowFrames(page);
   await page.addInitScript(() => {
     Storage.prototype.getItem = () => {
       throw new DOMException('Denied', 'SecurityError');
