@@ -27,6 +27,17 @@ async function openBombsRecipe(page: Parameters<typeof waitHooks>[0]): Promise<v
     // The Open! button only renders on touch; desktop opens with KeyE below.
     await expect(page.locator('#tw-btn-open')).toBeVisible({ timeout: 10_000 });
   }
+  // t_189085b4: a CI run sent the real press into a frame loop that was not
+  // stepping and then timed out on an opaque "bombs 0". Only send Open! to a
+  // loop observed to be stepping: if no tick passes after staging, this fails
+  // with a diagnosis instead. Same 10s budget; no new timeout or retry.
+  const stagedTick = (await getState(page)).tick;
+  await expect
+    .poll(async () => (await getState(page)).tick, {
+      message: 'sim loop not stepping after staging',
+      timeout: 10_000,
+    })
+    .toBeGreaterThan(stagedTick);
   const driver = await driverFor(page);
   await driver.open();
   await expect
