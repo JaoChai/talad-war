@@ -1,6 +1,6 @@
 import { expect, type CDPSession, type Page } from '@playwright/test';
 import type { MatchStats } from '../src/stats';
-import type { AudioLogEntry } from '../src/testHooks';
+import type { AudioLogEntry, StallFeedback } from '../src/testHooks';
 
 /** Minimal shape of window.__talad.state() used by the e2e specs. */
 export interface HookUnit {
@@ -37,6 +37,7 @@ declare global {
       audioLog(): AudioLogEntry[];
       audioReady(): boolean;
       musicGain(): number;
+      stallFeedback(team: 'fruit' | 'dessert'): StallFeedback;
       state(): HookState;
       setSeed(seed: number): void;
       fastForward(ticks: number): void;
