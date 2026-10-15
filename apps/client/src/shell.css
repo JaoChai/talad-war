@@ -101,16 +101,17 @@ body {
 
 .tw-timer {
   position: absolute;
-  top: 8px;
+  top: 4px;
   left: 50%;
   transform: translateX(-50%);
-  min-width: 84px;
-  padding: 3px 16px;
+  min-width: 56px;
+  padding: 0 10px;
   border-radius: 999px;
   background: rgba(27, 16, 48, 0.85);
-  border: 2px solid rgba(158, 209, 255, 0.8);
+  border: 1px solid rgba(158, 209, 255, 0.8);
   color: #fff;
-  font-size: 22px;
+  font-size: 16px;
+  line-height: 20px;
   font-weight: 800;
   text-align: center;
   font-variant-numeric: tabular-nums;
@@ -128,11 +129,13 @@ body {
 }
 
 .tw-cmd-btn {
-  width: 56px;
+  /* Keep Thai labels whole, with 4px clear inside the border. */
+  width: 84px;
   height: 56px;
   min-width: 56px;
   min-height: 56px;
-  padding: 0;
+  padding: 4px;
+  white-space: nowrap;
   border-radius: 14px;
   border: 2px solid #9ed1ff;
   background: rgba(27, 16, 48, 0.85);
@@ -753,5 +756,28 @@ body {
   .tw-score dd {
     font-size: 20px;
     line-height: 1.2;
+  }
+}
+
+/* Below 350px the vertical command stack would intersect Fire. Keep the
+   action controls untouched and use one command row above them instead. */
+@media (max-height: 350px) and (min-width: 600px) {
+  .tw-cmd-btn {
+    position: absolute;
+    top: 0;
+    right: 0;
+  }
+
+  .tw-cmd-btn:nth-child(2) {
+    right: 94px;
+  }
+
+  .tw-cmd-btn:nth-child(3) {
+    right: 188px;
+  }
+
+  .tw-timer {
+    top: 0;
+    line-height: 18px;
   }
 }
