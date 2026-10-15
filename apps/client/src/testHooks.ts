@@ -1,4 +1,13 @@
 import type { MatchState, SquadCommand, Team } from '@talad/sim';
+import type { SfxKey } from './audio';
+
+export interface AudioLogEntry {
+  key: SfxKey;
+  tick: number;
+  timeMs: number;
+  started: boolean;
+  musicGain: number;
+}
 
 /** window.__talad — Playwright drives matches through these (plan Task 8).
  *
@@ -8,6 +17,9 @@ import type { MatchState, SquadCommand, Team } from '@talad/sim';
  * dead-code eliminated (grep dist for `__talad` → 0 hits without the flag).
  */
 export interface TaladTestHooks {
+  audioLog(): AudioLogEntry[];
+  audioReady(): boolean;
+  musicGain(): number;
   state(): MatchState;
   setSeed(seed: number): void;
   fastForward(ticks: number): void;

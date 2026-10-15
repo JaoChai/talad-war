@@ -1,4 +1,5 @@
 import type { CDPSession, Page } from '@playwright/test';
+import type { AudioLogEntry } from '../src/testHooks';
 
 /** Minimal shape of window.__talad.state() used by the e2e specs. */
 export interface HookUnit {
@@ -30,6 +31,9 @@ export interface HookState {
 declare global {
   interface Window {
     __talad: {
+      audioLog(): AudioLogEntry[];
+      audioReady(): boolean;
+      musicGain(): number;
       state(): HookState;
       setSeed(seed: number): void;
       fastForward(ticks: number): void;
