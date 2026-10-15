@@ -34,6 +34,25 @@ describe('QA-01: close attackers', () => {
     expect(hits).toBeGreaterThanOrEqual(25);
   });
 
+  it('a late attacker takes a free nearby face instead of walking through occupied stations', () => {
+    const s = attackers('fruit');
+    s.units[1]!.pos = { x: 32.3, y: 4.4 };
+    s.units[2]!.pos = { x: 33.7, y: 6.7 };
+    const late = { ...s.units[2]!, id: 8, pos: { x: 32.2, y: 4.6 } };
+    s.units.push(late);
+    const input = botInput(s, late.id);
+    // The free west-north face is directly above; the old fixed slot routes
+    // this newcomer southeast through the two incumbents' corner.
+    expect(input.move.y).toBeLessThan(-0.5);
+    let next = s;
+    for (let t = 0; t < 100; t++) next = step(next, new Map());
+    const arrived = next.units.find((u) => u.id === late.id)!;
+    expect(arrived.pos.y).toBeLessThan(3);
+    expect(
+      Math.hypot(arrived.pos.x - next.units[1]!.pos.x, arrived.pos.y - next.units[1]!.pos.y),
+    ).toBeGreaterThan(1.8);
+  });
+
   it('a lone slapper keeps its existing mobile approach when there is no crowd to spread', () => {
     const s = attackers('fruit');
     s.units = s.units.slice(0, 2);

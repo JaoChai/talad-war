@@ -240,11 +240,47 @@ function attackPlan(s: MatchState, unit: Unit, ti: number): BotPlan {
     // full-speed milling drifts along the face and piles teammates together.
     // Resolve in fruit space then rotate; global ids must never choose slots.
     const canonical = stallRect('dessert');
-    const slot = ti % 5;
-    const at =
-      slot < 2
-        ? { x: canonical.minX - 0.7, y: canonical.minY + 0.6 + slot * 1.8 }
-        : { x: canonical.minX + 0.7 + (slot - 2) * 1.7, y: canonical.maxY + 0.7 };
+    const slots = [
+      { x: canonical.minX - 0.7, y: canonical.minY + 2.4 },
+      { x: canonical.minX + 0.7, y: canonical.maxY + 0.7 },
+      { x: canonical.minX - 0.7, y: canonical.minY + 0.2 },
+      { x: canonical.maxX - 0.5, y: canonical.maxY + 0.7 },
+      { x: canonical.maxX + 0.7, y: canonical.minY + 2.4 },
+    ];
+    const canonicalPos = (u: Unit): Vec2 =>
+      u.team === 'fruit' ? u.pos : { x: ARENA_W - u.pos.x, y: ARENA_H - u.pos.y };
+    // Incumbents claim their nearest station first, then arrivals take the
+    // nearest free face. Ties use TEAM INDEX, not global ids or team direction.
+    // No remembered assignment: identical mirrored states give identical claims.
+    const group = s.units
+      .filter(
+        (u) =>
+          u.team === unit.team &&
+          u.isBot &&
+          !unitDead(u) &&
+          u.gun === null &&
+          u.bombs === 0 &&
+          botGoal(s, u.id) === 'attack',
+      )
+      .sort(
+        (a, b) =>
+          Math.min(...slots.map((p) => dist2(canonicalPos(a), p))) -
+            Math.min(...slots.map((p) => dist2(canonicalPos(b), p))) ||
+          teamIndexOf(s, a) - teamIndexOf(s, b),
+      );
+    const free = new Set(slots.map((_, i) => i));
+    let at = slots[0]!;
+    for (const mate of group) {
+      const pos = canonicalPos(mate);
+      const slot = [...free].sort(
+        (a, b) => dist2(pos, slots[a]!) - dist2(pos, slots[b]!) || a - b,
+      )[0]!;
+      free.delete(slot);
+      if (mate.id === unit.id) {
+        at = slots[slot]!;
+        break;
+      }
+    }
     return {
       target: unit.team === 'fruit' ? at : { x: ARENA_W - at.x, y: ARENA_H - at.y },
       arriveRadius: 0.25,

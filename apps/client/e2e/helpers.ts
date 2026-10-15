@@ -37,6 +37,14 @@ declare global {
       audioLog(): AudioLogEntry[];
       audioReady(): boolean;
       musicGain(): number;
+      unitFeedback(id: number): {
+        now: number;
+        attackAt: number;
+        x: number;
+        y: number;
+        width: number;
+        flipX: boolean;
+      };
       stallFeedback(team: 'fruit' | 'dessert'): StallFeedback;
       state(): HookState;
       setSeed(seed: number): void;

@@ -160,6 +160,17 @@ export class MatchScene extends Phaser.Scene {
         audioLog: () => structuredClone(audioLog),
         audioReady: () => this.audio.isReady,
         musicGain: () => this.audio.musicGain,
+        unitFeedback: (id) => {
+          const sprite = this.children.getByName(`unit-${id}`) as Phaser.GameObjects.Sprite | null;
+          return {
+            now: this.time.now,
+            attackAt: (sprite?.getData('attackAt') as number | undefined) ?? -1,
+            x: sprite?.x ?? 0,
+            y: sprite?.y ?? 0,
+            width: sprite?.displayWidth ?? 0,
+            flipX: sprite?.flipX ?? false,
+          };
+        },
         stallFeedback: (team) => {
           // Observe real Phaser objects; no renderer test-only methods.
           const stall = this.children.getByName(`stall-${team}`) as Phaser.GameObjects.Image | null;

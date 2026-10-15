@@ -29,6 +29,9 @@ interface UnitView {
   sprite: Phaser.GameObjects.Sprite;
   ring: Phaser.GameObjects.Ellipse;
   hurtUntil: number;
+  attackAt: number;
+  attackTick: number;
+  attackDir: { x: number; y: number };
 }
 
 interface CrateView {
@@ -98,7 +101,7 @@ export class MatchView {
       sprite.setPosition(at.x + shake, at.y);
       sprite.setTexture(stallTexture(team, stall.hp));
       if (now < (sprite.getData('flashUntil') as number))
-        sprite.setTint(0xffdfb0).setTintMode(Phaser.TintModes.SCREEN);
+        sprite.setTint(0x995544).setTintMode(Phaser.TintModes.MULTIPLY);
       else sprite.clearTint();
       sprite.setDepth(Math.floor(at.y) - 4);
     }
@@ -110,6 +113,19 @@ export class MatchView {
     for (const unit of cur.units) {
       const view = this.ensureUnit(unit);
       const before = prevUnits.get(unit.id);
+      const attacked =
+        before &&
+        (unit.attackCooldownTicks > before.attackCooldownTicks ||
+          (unit.gun !== null &&
+            before.gun !== null &&
+            unit.gun.ammoCooldownTicks > before.gun.ammoCooldownTicks));
+      if (cur.tick < view.attackTick) view.attackAt = -Infinity;
+      if (attacked && cur.tick !== view.attackTick) {
+        view.attackTick = cur.tick;
+        view.attackAt = now;
+        view.attackDir = { ...unit.facing };
+        view.sprite.setData('attackAt', now);
+      }
       const x = before ? Phaser.Math.Linear(before.pos.x, unit.pos.x, alpha) : unit.pos.x;
       const y = before ? Phaser.Math.Linear(before.pos.y, unit.pos.y, alpha) : unit.pos.y;
       const at = worldToStage({ x, y });
@@ -122,7 +138,18 @@ export class MatchView {
       view.ring.setVisible(!dead);
       if (dead) continue;
       const drawY = clampDrawY(at.y); // review round 1 #2: keep heads on-canvas
-      view.sprite.setPosition(at.x, drawY);
+      // Existing frames only: one 180ms lunge/squash, independent of render
+      // frame count. The sim's cooldown reset proves an attack really fired.
+      const elapsed = now - view.attackAt;
+      const pulse = elapsed >= 0 && elapsed < 180 ? Math.sin((Math.PI * elapsed) / 180) : 0;
+      view.sprite.setPosition(
+        at.x + view.attackDir.x * 9 * pulse,
+        drawY + view.attackDir.y * 9 * pulse,
+      );
+      view.sprite.setDisplaySize(
+        UNIT_DISPLAY_HEIGHT * (1 + 0.08 * pulse),
+        UNIT_DISPLAY_HEIGHT * (1 - 0.08 * pulse),
+      );
       view.sprite.setDepth(Math.floor(drawY));
       view.ring.setPosition(at.x, drawY - 2);
       view.ring.setDepth(Math.floor(drawY) - 1);
@@ -135,7 +162,7 @@ export class MatchView {
             ? RUN_FRAME
             : IDLE_FRAME;
       view.sprite.setFrame(frame);
-      view.sprite.setFlipX(unit.facing.x < -0.01);
+      view.sprite.setFlipX((pulse > 0 ? view.attackDir.x : unit.facing.x) < -0.01);
     }
 
     // Marker above the human unit (unit 0, fruit).
@@ -167,10 +194,18 @@ export class MatchView {
     const skins = SKINS[unit.team];
     const skin = skins[Math.min(Math.max(teamMates, 0), skins.length - 1)] ?? skins[0]!;
     const sprite = this.scene.add.sprite(0, 0, skin, 0);
+    sprite.setName(`unit-${unit.id}`);
     sprite.setOrigin(0.5, UNIT_ANCHOR_Y);
     sprite.setDisplaySize(UNIT_DISPLAY_HEIGHT, UNIT_DISPLAY_HEIGHT);
     const ring = this.scene.add.ellipse(0, 0, 44, 15, TEAM_COLOURS[unit.team], 0.4);
-    const view: UnitView = { sprite, ring, hurtUntil: 0 };
+    const view: UnitView = {
+      sprite,
+      ring,
+      hurtUntil: 0,
+      attackAt: -Infinity,
+      attackTick: -1,
+      attackDir: { x: 0, y: 0 },
+    };
     this.units.set(unit.id, view);
     return view;
   }

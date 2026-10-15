@@ -32,6 +32,14 @@ export interface TaladTestHooks {
   audioLog(): AudioLogEntry[];
   audioReady(): boolean;
   musicGain(): number;
+  unitFeedback(id: number): {
+    now: number;
+    attackAt: number;
+    x: number;
+    y: number;
+    width: number;
+    flipX: boolean;
+  };
   stallFeedback(team: Team): StallFeedback;
   state(): MatchState;
   setSeed(seed: number): void;
