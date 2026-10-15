@@ -16,6 +16,7 @@
     "phaser": "4.2.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@cloudflare/vite-plugin": "1.60.2",
     "@playwright/test": "1.63.0",
     "happy-dom": "20.14.5",

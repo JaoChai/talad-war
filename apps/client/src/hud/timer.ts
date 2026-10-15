@@ -17,6 +17,7 @@ export class MatchTimer {
   constructor(mount: HTMLElement) {
     this.el = document.createElement('div');
     this.el.className = 'tw-timer';
+    this.el.id = 'tw-timer';
     this.el.setAttribute('role', 'timer');
     this.el.setAttribute('aria-label', th.timerLabel);
     this.el.textContent = formatElapsed(0);

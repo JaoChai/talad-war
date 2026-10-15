@@ -17,9 +17,14 @@ export interface HookState {
   units: HookUnit[];
   crates: { id: number; pos: { x: number; y: number }; state: string; landTick: number }[];
   pads: Record<string, { origin: { x: number; y: number }; cells: (number | null)[][] }>;
+  stalls: Record<string, { team: string; pos: { x: number; y: number }; hp: number }>;
   projectiles: { id: number }[];
   events: { kind: string; tick: number; target?: unknown }[];
   winner: string | null;
+  commands: {
+    fruit: 'attack' | 'guard' | 'fetch' | null;
+    dessert: 'attack' | 'guard' | 'fetch' | null;
+  };
 }
 
 declare global {
@@ -30,6 +35,8 @@ declare global {
       fastForward(ticks: number): void;
       setCommand(team: 'fruit' | 'dessert', cmd: 'attack' | 'guard' | 'fetch' | null): void;
       placeUnit(unitId: number, x: number, y: number): void;
+      setPadCrates(team: 'fruit' | 'dessert', cols: number[]): void;
+      setStallHp(team: 'fruit' | 'dessert', hp: number): void;
     };
   }
 }
@@ -89,6 +96,8 @@ export interface Driver {
   action(): Promise<void>;
   /** Open! (E key or Open! button). */
   open(): Promise<void>;
+  /** Throw a bomb (Q key or Throw button). */
+  throwBomb(): Promise<void>;
   /** Fire tap (mouse click or Fire button tap). */
   fireTap(): Promise<void>;
   release(): Promise<void>;
@@ -120,6 +129,7 @@ export async function keyDriver(page: Page): Promise<Driver> {
     },
     action: () => page.keyboard.press('KeyE'),
     open: () => page.keyboard.press('KeyE'),
+    throwBomb: () => page.keyboard.press('KeyQ'),
     fireTap: async () => {
       // Click near the human's screen position: slap/gun fire is aim-agnostic
       // for the nearest-enemy target, so the exact point does not matter.
@@ -181,6 +191,7 @@ export async function joyDriver(page: Page, cdp: CDPSession): Promise<Driver> {
     },
     action: () => tapButton(2, '#tw-btn-pick'),
     open: () => tapButton(2, '#tw-btn-open'),
+    throwBomb: () => tapButton(2, '#tw-btn-throw'),
     fireTap: () => tapButton(2, '#tw-btn-fire'),
     release: async () => {
       for (const id of [...points.keys()]) await remove(id);
