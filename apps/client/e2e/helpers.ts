@@ -22,7 +22,7 @@ export interface HookState {
   pads: Record<string, { origin: { x: number; y: number }; cells: (number | null)[][] }>;
   stalls: Record<string, { team: string; pos: { x: number; y: number }; hp: number }>;
   projectiles: { id: number }[];
-  events: { kind: string; tick: number; target?: unknown }[];
+  events: { kind: string; tick: number; target?: unknown; dmg?: number }[];
   winner: string | null;
   commands: {
     fruit: 'attack' | 'guard' | 'fetch' | null;
@@ -44,6 +44,7 @@ declare global {
         y: number;
         width: number;
         flipX: boolean;
+        slash: { kind: string; screenSize: number; alpha: number } | null;
       };
       stallFeedback(team: 'fruit' | 'dessert'): StallFeedback;
       state(): HookState;
