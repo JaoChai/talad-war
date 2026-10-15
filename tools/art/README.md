@@ -6,6 +6,9 @@ Owner-approved concept sheets (2026-10-14) are cut into game files under `apps/c
   (frames `idle, run, carry, hurt`, 256 px cells, one scale per character, feet on a shared baseline, anchor in
   `manifest.json`); the props sheet (magenta key) becomes one trimmed WebP per prop; the arena becomes 1920x1080 WebP.
   Run with `PD=5` (prop separation dilation, tuned for the approved props sheet).
+- `compose_arena.py FLOOR OBSTACLES OUT` — arena v2 (owner choice A, 2026-10-15): the painted floor is open over the
+  whole 40x24 world and the six obstacle props are drawn exactly on `map.ts` `OBSTACLES`, so art matches walkability.
+  Sources: `~/Code/team-buddies-art-staging/arena-v2/`. Re-run it if `OBSTACLES` ever changes.
 - `contact.py OUT` — QA contact sheets on solid blue plus per-frame pixel stats.
 - Sources (not committed, 2+ MB each): `~/Code/team-buddies-art-staging/task7-w1/props.png`, `task7-w2/*.png`.
 - Needs Python with numpy, scipy, pillow (WebP).
