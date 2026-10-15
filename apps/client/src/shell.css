@@ -235,13 +235,14 @@ body {
 /* Above Fire's left shoulder. */
 #tw-btn-throw {
   right: 122px;
-  bottom: 104px;
+  bottom: 114px;
   background: radial-gradient(circle at 35% 30%, #748ffc, #364fc7 70%);
 }
 
+/* Above the Pick/Fire row, beside Throw and clear of the command column. */
 #tw-btn-open {
   right: 216px;
-  bottom: 20px;
+  bottom: 114px;
   background: radial-gradient(circle at 35% 30%, #69db7c, #2b8a3e 70%);
 }
 

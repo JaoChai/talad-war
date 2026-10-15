@@ -102,6 +102,31 @@ test.describe('hud (Task 9)', () => {
     }
   });
 
+  test('squad commands: held Digit1/2/3 ignores repeat keydowns until release', async ({
+    page,
+  }) => {
+    test.skip(isMobile(), 'desktop command shortcuts');
+    await page.goto('/?seed=7');
+    await waitHooks(page);
+    const fruitCommand = async () => (await getState(page)).commands.fruit;
+
+    for (const [key, command] of [
+      ['Digit1', 'attack'],
+      ['Digit2', 'guard'],
+      ['Digit3', 'fetch'],
+    ] as const) {
+      await page.keyboard.down(key);
+      await expect.poll(fruitCommand).toBe(command);
+      for (let repeat = 0; repeat < 3; repeat++) {
+        await page.keyboard.down(key); // Playwright sets repeat=true while held.
+        await expect.poll(fruitCommand, `${key} repeat ${repeat + 1}`).toBe(command);
+      }
+      await page.keyboard.up(key);
+      await page.keyboard.press(key); // A fresh press still toggles off.
+      await expect.poll(fruitCommand).toBeNull();
+    }
+  });
+
   test('stall bars: aria-valuenow mirrors hp (dessert 3250 -> 50)', async ({ page }) => {
     await page.goto('/?seed=7');
     await waitHooks(page);
@@ -160,6 +185,15 @@ test.describe('hud (Task 9)', () => {
       expect(box.y, `${sel} top edge`).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width, `${sel} right edge`).toBeLessThanOrEqual(844);
       expect(box.y + box.height, `${sel} bottom edge`).toBeLessThanOrEqual(390);
+    }
+
+    // The approved action cluster puts both utilities above the Pick/Fire row.
+    for (const utility of ['#tw-btn-open', '#tw-btn-throw']) {
+      const upper = boxes.find((box) => box.id === utility)!;
+      for (const action of ['#tw-btn-pick', '#tw-btn-fire']) {
+        const lower = boxes.find((box) => box.id === action)!;
+        expect(upper.y + upper.height, `${utility} above ${action}`).toBeLessThanOrEqual(lower.y);
+      }
     }
 
     for (let i = 0; i < boxes.length; i++) {

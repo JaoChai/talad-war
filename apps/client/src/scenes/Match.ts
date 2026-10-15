@@ -95,7 +95,7 @@ export class MatchScene extends Phaser.Scene {
     window.addEventListener('keydown', (e) => {
       this.keyboard.handleKey(e.code, true);
       const cmd = COMMAND_KEYS[e.code];
-      if (cmd) this.commandsUi.request(cmd);
+      if (cmd && !e.repeat) this.commandsUi.request(cmd);
     });
     window.addEventListener('keyup', (e) => this.keyboard.handleKey(e.code, false));
 
