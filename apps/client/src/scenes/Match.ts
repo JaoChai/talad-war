@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { STALL_MAX_HP, TICK_HZ, canOpen, createMatch, padCellCenter, step } from '@talad/sim';
 import type { MatchState, SquadCommand, Team, UnitId, UnitInput, Vec2 } from '@talad/sim';
-import { AudioMixer, sfxForTick } from '../audio';
+import { AudioMixer, readSoundPreference, sfxForTick } from '../audio';
 import type { SfxKey } from '../audio';
 import { AimMarker } from '../hud/aimMarker';
 import { SquadCommands } from '../hud/commands';
@@ -10,6 +10,8 @@ import { PreviewText } from '../hud/padPreview';
 import { PadGlow } from '../hud/padGlow';
 import { StallBars } from '../hud/stallBars';
 import { MatchTimer } from '../hud/timer';
+import { shouldRotate } from '../hud/rotatePrompt';
+import { emptyStats, tallyStats } from '../stats';
 import { KeyboardInput } from '../input/keyboard';
 import { TouchControls, isTouchDevice } from '../input/touch';
 import { FixedLoop } from '../loop';
@@ -39,8 +41,10 @@ const COMMAND_KEYS: Record<string, 'attack' | 'guard' | 'fetch'> = {
 export class MatchScene extends Phaser.Scene {
   private state!: MatchState;
   private prevState!: MatchState;
-  private readonly loop = new FixedLoop(TICK_HZ, 5);
-  private readonly keyboard = new KeyboardInput();
+  private loop = new FixedLoop(TICK_HZ, 5);
+  private keyboard = new KeyboardInput();
+  private stats = emptyStats();
+  private resultsTimer: number | null = null;
   private view!: MatchView;
   private hudRoot!: HTMLElement;
   private hud!: MatchHud;
@@ -66,6 +70,15 @@ export class MatchScene extends Phaser.Scene {
     if (!mount) throw new Error('MatchScene: #app mount missing');
     this.state = createMatch(data?.seed ?? 1);
     this.prevState = structuredClone(this.state);
+    this.loop = new FixedLoop(TICK_HZ, 5);
+    this.keyboard = new KeyboardInput();
+    this.stats = emptyStats();
+    this.resultsTimer = null;
+    this.command = {};
+    this.aim = null;
+    this.fireHeld = false;
+    this.audio = new AudioMixer();
+    this.audio.setMuted(!readSoundPreference());
 
     // Capture DOM controls too: touch buttons stop propagation before Phaser.
     const unlock = (event: Event) => {
@@ -74,10 +87,19 @@ export class MatchScene extends Phaser.Scene {
     document.addEventListener('pointerdown', unlock, { capture: true });
     document.addEventListener('keydown', unlock, { capture: true });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      if (this.resultsTimer !== null) window.clearTimeout(this.resultsTimer);
+      this.resultsTimer = null;
       document.removeEventListener('pointerdown', unlock, true);
       document.removeEventListener('keydown', unlock, true);
       this.audio.dispose();
       this.observeAudio = null;
+      this.hudRoot.remove();
+      this.touch?.destroy();
+      this.touch = null;
+      this.input.removeAllListeners();
+      if (TEST_HOOKS_ENABLED) {
+        delete (window as unknown as { __talad?: TaladTestHooks }).__talad;
+      }
     });
 
     this.view = new MatchView(this);
@@ -109,12 +131,18 @@ export class MatchScene extends Phaser.Scene {
     this.input.on('pointerupoutside', () => {
       this.fireHeld = false;
     });
-    window.addEventListener('keydown', (e) => {
+    const keydown = (e: KeyboardEvent) => {
       this.keyboard.handleKey(e.code, true);
       const cmd = COMMAND_KEYS[e.code];
       if (cmd && !e.repeat) this.commandsUi.request(cmd);
+    };
+    const keyup = (e: KeyboardEvent) => this.keyboard.handleKey(e.code, false);
+    window.addEventListener('keydown', keydown);
+    window.addEventListener('keyup', keyup);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      window.removeEventListener('keydown', keydown);
+      window.removeEventListener('keyup', keyup);
     });
-    window.addEventListener('keyup', (e) => this.keyboard.handleKey(e.code, false));
 
     if (TEST_HOOKS_ENABLED) {
       const audioLog: AudioLogEntry[] = [];
@@ -128,6 +156,7 @@ export class MatchScene extends Phaser.Scene {
         });
       };
       const hooks: TaladTestHooks = {
+        stats: () => structuredClone(this.stats),
         audioLog: () => structuredClone(audioLog),
         audioReady: () => this.audio.isReady,
         musicGain: () => this.audio.musicGain,
@@ -136,14 +165,15 @@ export class MatchScene extends Phaser.Scene {
           this.state = createMatch(seed);
           this.prevState = structuredClone(this.state);
           this.command = {};
+          this.stats = emptyStats();
+          if (this.resultsTimer !== null) window.clearTimeout(this.resultsTimer);
+          this.resultsTimer = null;
           audioLog.length = 0;
           this.syncAll();
         },
         fastForward: (ticks: number) => {
-          for (let i = 0; i < ticks; i++) {
-            this.prevState = this.state;
-            this.state = step(this.state, new Map(), this.command);
-            this.playTickAudio();
+          for (let i = 0; i < ticks && this.state.winner === null; i++) {
+            this.stepTick(new Map());
           }
           this.syncAll();
         },
@@ -195,12 +225,10 @@ export class MatchScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    if (document.hidden) return; // Review Focus 5: no ticks while hidden
+    if (document.hidden || shouldRotate()) return; // Pause without accumulating portrait time.
     const ticks = this.loop.advance(delta);
-    for (let i = 0; i < ticks; i++) {
-      this.prevState = this.state;
-      this.state = step(this.state, this.humanInputs(), this.command);
-      this.playTickAudio();
+    for (let i = 0; i < ticks && this.state.winner === null; i++) {
+      this.stepTick(this.humanInputs());
     }
     this.syncAll(this.loop.alpha());
     const human = this.state.units[HUMAN_UNIT];
@@ -209,6 +237,13 @@ export class MatchScene extends Phaser.Scene {
       human?.bombs ?? 0,
       this.state.winner !== null,
     );
+  }
+
+  private stepTick(inputs: ReadonlyMap<UnitId, UnitInput>): void {
+    this.prevState = this.state;
+    this.state = step(this.state, inputs, this.command);
+    this.stats = tallyStats(this.stats, this.prevState, this.state);
+    this.playTickAudio();
   }
 
   private playTickAudio(): void {
@@ -230,6 +265,17 @@ export class MatchScene extends Phaser.Scene {
     this.glow.sync(this.state);
     this.aimMarker.sync(this.state);
     this.hud.sync(this.state);
+    if (this.state.winner !== null && this.resultsTimer === null) {
+      // Banner/jingle duration is wall time, not Phaser's smoothed scene delta
+      // (initial slow frames can stretch a scene-clock second to many seconds).
+      this.resultsTimer = window.setTimeout(() => {
+        this.scene.start('results', {
+          winner: this.state.winner,
+          seed: this.state.seed,
+          stats: this.stats,
+        });
+      }, 1200);
+    }
   }
 
   /** The human unit's merged keyboard + touch input for one tick. */

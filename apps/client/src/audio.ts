@@ -43,6 +43,28 @@ export function sfxForTick(prev: MatchState | null, cur: MatchState): SfxKey[] {
   return sounds;
 }
 
+let soundOn = true;
+
+/** Storage can be denied in private/embedded browsers; session choice still works. */
+export function readSoundPreference(): boolean {
+  try {
+    const saved = localStorage.getItem('tw.sound');
+    if (saved !== null) soundOn = saved !== 'off';
+  } catch {
+    // Retain the in-memory preference.
+  }
+  return soundOn;
+}
+
+export function writeSoundPreference(on: boolean): void {
+  soundOn = on;
+  try {
+    localStorage.setItem('tw.sound', on ? 'on' : 'off');
+  } catch {
+    // The game remains playable without storage.
+  }
+}
+
 interface AudioOptions {
   contextFactory?: () => AudioContext | null;
   fetcher?: typeof fetch;

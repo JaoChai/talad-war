@@ -36,7 +36,7 @@ export class BootScene extends Phaser.Scene {
     const manifest = this.cache.json.get('art-manifest') as ArtManifest | null;
     if (!manifest) {
       // No manifest: still enter the match (placeholders render untextured).
-      this.scene.start('match', { seed: seedFromUrl() });
+      this.scene.start('title', { seed: seedFromUrl() });
       return;
     }
     for (const [key, c] of Object.entries(manifest.characters)) {
@@ -49,7 +49,7 @@ export class BootScene extends Phaser.Scene {
       this.load.image(key, `art/${p.file}`);
     }
     this.load.image('arena', `art/${manifest.arena.file}`);
-    this.load.once('complete', () => this.scene.start('match', { seed: seedFromUrl() }));
+    this.load.once('complete', () => this.scene.start('title', { seed: seedFromUrl() }));
     this.load.start();
   }
 }

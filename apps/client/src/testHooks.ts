@@ -1,5 +1,6 @@
 import type { MatchState, SquadCommand, Team } from '@talad/sim';
 import type { SfxKey } from './audio';
+import type { MatchStats } from './stats';
 
 export interface AudioLogEntry {
   key: SfxKey;
@@ -17,6 +18,7 @@ export interface AudioLogEntry {
  * dead-code eliminated (grep dist for `__talad` → 0 hits without the flag).
  */
 export interface TaladTestHooks {
+  stats(): MatchStats;
   audioLog(): AudioLogEntry[];
   audioReady(): boolean;
   musicGain(): number;

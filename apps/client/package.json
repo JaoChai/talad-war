@@ -7,7 +7,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --passWithNoTests && node scripts/check-load-budget.mjs",
     "e2e": "VITE_TEST_HOOKS=1 npm run build && playwright test",
     "deploy": "wrangler deploy"
   },
