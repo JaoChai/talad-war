@@ -3,6 +3,9 @@
 export type Team = 'fruit' | 'dessert';
 export type UnitId = number;
 export type CrateId = number;
+export type CrateKind = 'normal' | 'super';
+export type ItemId = 'unarmed' | 'gun' | 'heavy' | 'bombs' | 'crate';
+export type ItemBan = 'heavy' | 'super';
 
 export interface Vec2 {
   x: number;
@@ -41,6 +44,8 @@ export interface Crate {
   id: CrateId;
   pos: Vec2;
   state: CrateState;
+  /** Missing quality is normal for legacy callers; production spawns set it explicitly. */
+  kind?: CrateKind;
   landTick: number;
 }
 
@@ -96,4 +101,6 @@ export interface MatchState {
   /** Only the latest tick's events (the client reads them for SFX/FX). */
   events: MatchEvent[];
   nextId: number;
+  /** Deterministic harness/testing rules; omitted in ordinary matches. */
+  itemBans?: Partial<Record<Team, readonly ItemBan[]>>;
 }

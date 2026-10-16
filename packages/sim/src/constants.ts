@@ -17,6 +17,7 @@ export const DROP_INTERVAL_CENTER_TICKS = 60;
 export const DROP_INTERVAL_SIDE_TICKS = 140;
 export const DROP_FALL_TICKS = 30;
 export const MAX_GROUND_CRATES = 10;
+export const SUPER_CRATE_CHANCE = 1 / 8;
 
 /** A resting crate must sit at least this far inside the arena bounds. */
 export const CRATE_MARGIN = 0.1;
