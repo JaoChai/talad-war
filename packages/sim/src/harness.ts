@@ -1,12 +1,14 @@
 /** CLI harness: the only node-facing entry of the sim package (node builtins + perf timing allowed here only). */
 import { pathToFileURL } from 'node:url';
 import { TICK_HZ, createMatch, step } from './index';
-import type { Team } from './types';
+import type { Recipe } from './pad';
+import type { ItemBan, Team } from './types';
 
 export interface BatchOpts {
   games: number;
   seed0: number;
   maxMinutes: number;
+  ban?: { team: Team; item: ItemBan };
 }
 
 export interface BatchResult {
@@ -18,6 +20,10 @@ export interface BatchResult {
   draws: number;
   timeouts: number;
   msPerTick: number;
+  opens: Record<Team, Record<Recipe, number>>;
+  superOpens: Record<Team, number>;
+  /** Damage credited to the attacking team, including overkill as emitted by hit events. */
+  stallDamage: Record<Team, Record<'slap' | 'gun' | 'bombs' | 'heavy', number>>;
 }
 
 export interface TargetCheck {
@@ -30,7 +36,6 @@ const TEAMS: readonly Team[] = ['fruit', 'dessert'];
 /** Balance targets from the design doc Q7 / plan Global Constraints. */
 const MEDIAN_SEC: readonly [number, number] = [300, 480];
 const WIN_RATE: readonly [number, number] = [0.45, 0.55];
-const TIMEOUT_RATE_MAX = 0.02;
 const MS_PER_TICK_MAX = 0.5;
 
 function quantile(sorted: number[], q: number): number {
@@ -55,6 +60,15 @@ export function runBatch(opts: BatchOpts): BatchResult {
   const games = Math.max(1, Math.floor(opts.games));
   const maxTicks = Math.max(1, Math.floor(opts.maxMinutes * 60 * TICK_HZ));
   const wins: Record<Team, number> = { fruit: 0, dessert: 0 };
+  const opens: BatchResult['opens'] = {
+    fruit: { gun: 0, bombs: 0, buddy: 0, heavy: 0 },
+    dessert: { gun: 0, bombs: 0, buddy: 0, heavy: 0 },
+  };
+  const superOpens: BatchResult['superOpens'] = { fruit: 0, dessert: 0 };
+  const stallDamage: BatchResult['stallDamage'] = {
+    fruit: { slap: 0, gun: 0, bombs: 0, heavy: 0 },
+    dessert: { slap: 0, gun: 0, bombs: 0, heavy: 0 },
+  };
   let draws = 0;
   let timeouts = 0;
   let ticks = 0;
@@ -63,8 +77,33 @@ export function runBatch(opts: BatchOpts): BatchResult {
   const t0 = performance.now();
   for (let i = 0; i < games; i++) {
     let s = createMatch(opts.seed0 + i, { humanUnit: null });
+    if (opts.ban) s.itemBans = { [opts.ban.team]: [opts.ban.item] };
     while (s.winner === null && s.tick < maxTicks) {
       s = step(s, inputs);
+      for (const e of s.events) {
+        if (e.kind === 'opened' && (e.team === 'fruit' || e.team === 'dessert')) {
+          if (
+            e.recipe !== 'gun' &&
+            e.recipe !== 'bombs' &&
+            e.recipe !== 'buddy' &&
+            e.recipe !== 'heavy'
+          )
+            throw new Error(`Unknown opened recipe: ${String(e.recipe)}`);
+          opens[e.team][e.recipe]++;
+          if (e.super === true) superOpens[e.team]++;
+        }
+        if (e.kind === 'hit' && (e.target === 'fruit' || e.target === 'dessert')) {
+          if (
+            e.source !== 'slap' &&
+            e.source !== 'gun' &&
+            e.source !== 'bombs' &&
+            e.source !== 'heavy'
+          )
+            throw new Error(`Unknown stall damage source: ${String(e.source)}`);
+          if (typeof e.dmg !== 'number') throw new Error('Non-numeric stall damage');
+          stallDamage[e.target === 'fruit' ? 'dessert' : 'fruit'][e.source] += e.dmg;
+        }
+      }
       ticks++;
     }
     if (s.winner === null) timeouts++;
@@ -85,29 +124,36 @@ export function runBatch(opts: BatchOpts): BatchResult {
     draws,
     timeouts,
     msPerTick,
+    opens,
+    superOpens,
+    stallDamage,
   };
 }
 
 /** Checks a batch result against the balance bands; every miss becomes one message. */
-export function checkTargets(r: BatchResult): TargetCheck {
+export function checkTargets(r: BatchResult, ban?: BatchOpts['ban']): TargetCheck {
   const failures: string[] = [];
   const push = (ok: boolean, msg: string): void => {
     if (!ok) failures.push(msg);
   };
-  push(
-    r.medianSec >= MEDIAN_SEC[0] && r.medianSec <= MEDIAN_SEC[1],
-    `median ${r.medianSec.toFixed(1)}s outside ${MEDIAN_SEC[0]}-${MEDIAN_SEC[1]}s`,
-  );
-  for (const team of TEAMS) {
+  if (ban) {
     push(
-      r.winRate[team] >= WIN_RATE[0] && r.winRate[team] <= WIN_RATE[1],
-      `${team} win rate ${(r.winRate[team] * 100).toFixed(1)}% outside ${(WIN_RATE[0] * 100).toFixed(0)}-${(WIN_RATE[1] * 100).toFixed(0)}%`,
+      r.winRate[ban.team] >= 0.4,
+      `${ban.team} banned-${ban.item} win rate ${(r.winRate[ban.team] * 100).toFixed(1)}% below 40%`,
     );
+  } else {
+    push(
+      r.medianSec >= MEDIAN_SEC[0] && r.medianSec <= MEDIAN_SEC[1],
+      `median ${r.medianSec.toFixed(1)}s outside ${MEDIAN_SEC[0]}-${MEDIAN_SEC[1]}s`,
+    );
+    for (const team of TEAMS) {
+      push(
+        r.winRate[team] >= WIN_RATE[0] && r.winRate[team] <= WIN_RATE[1],
+        `${team} win rate ${(r.winRate[team] * 100).toFixed(1)}% outside ${(WIN_RATE[0] * 100).toFixed(0)}-${(WIN_RATE[1] * 100).toFixed(0)}%`,
+      );
+    }
   }
-  push(
-    r.timeouts / r.games <= TIMEOUT_RATE_MAX,
-    `timeouts ${r.timeouts}/${r.games} (${((r.timeouts / r.games) * 100).toFixed(1)}%) above ${TIMEOUT_RATE_MAX * 100}% cap`,
-  );
+  push(r.timeouts === 0, `timeouts ${r.timeouts}/${r.games} above zero cap`);
   push(
     r.msPerTick <= MS_PER_TICK_MAX,
     `msPerTick ${r.msPerTick.toFixed(3)} above ${MS_PER_TICK_MAX} cap`,
@@ -120,6 +166,21 @@ interface CliArgs extends BatchOpts {
 }
 
 function parseArgs(argv: string[]): CliArgs {
+  const teamIndex = argv.indexOf('--ban-team');
+  const itemIndex = argv.indexOf('--ban-item');
+  let ban: BatchOpts['ban'];
+  if (teamIndex >= 0 || itemIndex >= 0) {
+    const team = argv[teamIndex + 1];
+    const item = argv[itemIndex + 1];
+    if (
+      teamIndex < 0 ||
+      itemIndex < 0 ||
+      (team !== 'fruit' && team !== 'dessert') ||
+      (item !== 'heavy' && item !== 'super')
+    )
+      throw new Error('Use paired --ban-team fruit|dessert --ban-item heavy|super');
+    ban = { team, item };
+  }
   const flag = (name: string, def: number): number => {
     const i = argv.indexOf(`--${name}`);
     const v = i >= 0 ? Number(argv[i + 1]) : Number.NaN;
@@ -130,13 +191,20 @@ function parseArgs(argv: string[]): CliArgs {
     seed0: flag('seed0', 1),
     maxMinutes: flag('max-minutes', 15),
     assert: argv.includes('--assert'),
+    ...(ban ? { ban } : {}),
   };
 }
 
 function main(): number {
-  const args = parseArgs(process.argv.slice(2));
+  let args: CliArgs;
+  try {
+    args = parseArgs(process.argv.slice(2));
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
   const result = runBatch(args);
-  const check = checkTargets(result);
+  const check = checkTargets(result, args.ban);
   const out = check.ok ? { ...result, assert: 'pass' } : { ...result, assert: check.failures };
   console.log(JSON.stringify(out));
   return args.assert && !check.ok ? 1 : 0;
