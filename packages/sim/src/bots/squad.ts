@@ -26,6 +26,14 @@ export function botGoal(s: MatchState, unitId: UnitId): BotGoal {
         (a, b) => Number(b.carrying !== null) - Number(a.carrying !== null) || a.id - b.id,
       )[0];
       if (builder?.id === unit.id) return 'fetch';
+      // Expanded squads can retain defence even when equipment moves both
+      // default support units into attacking/building roles. Small squads keep
+      // the original pressure roles rather than reserving their only attacker.
+      const livingCount = s.units.filter((u) => u.team === unit.team && !unitDead(u)).length;
+      if (builder !== undefined && livingCount >= 4) {
+        const guard = eligible.find((u) => u.id !== builder.id && u.carrying === null);
+        if (guard?.id === unit.id) return 'guard';
+      }
     } else if (livingGunCount(s, unit.team) >= 2) return 'attack';
     if (unit.bombs > 0 || unit.gun?.kind === 'heavy') return 'attack';
     const goal = defaultGoal(s, unit);

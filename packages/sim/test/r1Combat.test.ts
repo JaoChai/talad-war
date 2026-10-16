@@ -76,24 +76,24 @@ describe('R1 combat profiles and independent perks', () => {
     );
     expect(weaponStats({ kind: 'heavy', ammoCooldownTicks: 0 })).toEqual({
       kind: 'heavy',
-      damage: 30,
+      damage: 60,
       range: 9,
       cooldownTicks: 30,
       speed: 12,
-      radius: 1.6,
-      stallMult: 2,
+      radius: 2.4,
+      stallMult: 0.25,
     });
     expect(weaponStats({ kind: 'heavy', super: true, ammoCooldownTicks: 0 })).toEqual({
       kind: 'heavy',
-      damage: 42,
+      damage: 65,
       range: 9,
       cooldownTicks: 30,
       speed: 12,
-      radius: 1.6,
-      stallMult: 2,
+      radius: 2.4,
+      stallMult: 0.25,
     });
     expect(bombStats(false)).toEqual({ damage: 45, radius: 2.2, stallMult: 1.5 });
-    expect(bombStats(true)).toEqual({ damage: 45, radius: 2.8, stallMult: 1.5 });
+    expect(bombStats(true)).toEqual({ damage: 45, radius: 2.25, stallMult: 1.5 });
     const s = arena();
     expect(unitMaxHp(unit(s, 0))).toBe(100);
     expect(unitMoveSpeed(unit(s, 0))).toBe(6);
@@ -107,24 +107,24 @@ describe('R1 combat profiles and independent perks', () => {
 
   it('super_gun_fires_after_5_ticks_and_aims_to_10_8', () => {
     const s = arena();
-    unit(s, 0).pos = { x: 0, y: 8 };
+    unit(s, 0).pos = { x: 0, y: 0 };
     unit(s, 0).gun = { ammoCooldownTicks: 0, super: true };
-    unit(s, 3).pos = { x: 10.8, y: 8 };
-    unit(s, 4).pos = { x: 0, y: 18.8 }; // equal distance; lower ID wins
+    unit(s, 3).pos = { x: 9.9, y: 0 };
+    unit(s, 4).pos = { x: 0, y: 9.9 }; // equal distance; lower ID wins
     unit(s, 5).pos = { x: 35, y: 22 }; // outside both aim ranges
     expect(weaponStats(unit(s, 0).gun!)).toMatchObject({
-      range: 10.8,
+      range: 9.9,
       cooldownTicks: 5,
       damage: 12,
     });
-    expect(autoAimTarget(s, 0)).toEqual({ x: 10.8, y: 8 });
+    expect(autoAimTarget(s, 0)).toEqual({ x: 9.9, y: 0 });
     unit(s, 3).pos.x += 0.0001;
     unit(s, 4).pos.y += 0.0001;
     expect(autoAimTarget(s, 0)).toBeNull();
-    unit(s, 3).pos = { x: 10.8, y: 8 };
+    unit(s, 3).pos = { x: 9.9, y: 0 };
     const p = shot(s);
-    expect(p).toMatchObject({ kind: 'bullet', super: true, ttlTicks: 12, vel: { x: 18, y: 0 } });
-    advance(s, 12);
+    expect(p).toMatchObject({ kind: 'bullet', super: true, ttlTicks: 11, vel: { x: 18, y: 0 } });
+    advance(s, 11);
     expect(unit(s, 3).hp).toBe(88);
     expect(s.events).toContainEqual(
       expect.objectContaining({ kind: 'hit', source: 'gun', super: true, dmg: 12 }),
@@ -176,7 +176,7 @@ describe('R1 combat profiles and independent perks', () => {
     advance(contact, 20);
     expect(explosions(contact)).toHaveLength(1);
     expect(contact.projectiles).toHaveLength(0);
-    expect(unit(contact, 3).hp).toBe(70);
+    expect(unit(contact, 3).hp).toBe(40);
     const throughFriend = arena();
     heavy(throughFriend);
     unit(throughFriend, 1).pos = { x: 13, y: 12 };
@@ -184,7 +184,7 @@ describe('R1 combat profiles and independent perks', () => {
     shot(throughFriend);
     advance(throughFriend, 20);
     expect(unit(throughFriend, 1).hp).toBe(100);
-    expect(unit(throughFriend, 3).hp).toBe(70);
+    expect(unit(throughFriend, 3).hp).toBe(40);
     expect(explosions(throughFriend)).toHaveLength(1);
     expect((explosions(throughFriend)[0]!.pos as Vec2).x).toBeCloseTo(15.6, 9);
     for (const remaining of [9, 1.37, 0.23]) {
@@ -214,33 +214,33 @@ describe('R1 combat profiles and independent perks', () => {
       p.pos = { x: 32.4, y: 4 };
       p.distanceLeft = 0.1; // expires at 32.5; enemy stall in splash radius
       unit(s, 1).pos = { x: 32.5, y: 4 }; // friendly cannot block/take damage
-      unit(s, 3).pos = { x: 32.5, y: 5.6 }; // exact radius edge
+      unit(s, 3).pos = { x: 32.5, y: 1.6 }; // exact radius edge
       unit(s, 4).pos = { x: 32.5, y: 5 }; // second victim
-      unit(s, 5).pos = { x: 32.5, y: 5.6001 }; // just outside
+      unit(s, 5).pos = { x: 32.5, y: 1.5999 }; // just outside
       advance(s, 1);
-      expect(unit(s, 3).hp).toBe(quality ? 58 : 70);
-      expect(unit(s, 4).hp).toBe(quality ? 58 : 70);
+      expect(unit(s, 3).hp).toBe(quality ? 35 : 40);
+      expect(unit(s, 4).hp).toBe(quality ? 35 : 40);
       expect(unit(s, 5).hp).toBe(100);
       expect(unit(s, 1).hp).toBe(100);
       expect(s.stalls.fruit.hp).toBe(6500);
-      expect(s.stalls.dessert.hp).toBe(6500 - (quality ? 84 : 60));
+      expect(s.stalls.dessert.hp).toBe(6500 - (quality ? 16.25 : 15));
       expect(explosions(s)).toEqual([expect.objectContaining({ source: 'heavy', super: quality })]);
       expect(s.events.filter((e) => e.kind === 'hit')).toEqual([
         expect.objectContaining({
           target: 3,
-          dmg: quality ? 42 : 30,
+          dmg: quality ? 65 : 60,
           source: 'heavy',
           super: quality,
         }),
         expect.objectContaining({
           target: 4,
-          dmg: quality ? 42 : 30,
+          dmg: quality ? 65 : 60,
           source: 'heavy',
           super: quality,
         }),
         expect.objectContaining({
           target: 'dessert',
-          dmg: quality ? 84 : 60,
+          dmg: quality ? 16.25 : 15,
           source: 'heavy',
           super: quality,
         }),
@@ -264,7 +264,7 @@ describe('R1 combat profiles and independent perks', () => {
       advance(s, 20);
       expect(explosions(s)).toHaveLength(1);
       expect(s.stalls.fruit.hp).toBe(6500);
-      expect(s.stalls.dessert.hp).toBe(pos.x === 35 ? 6440 : 6500);
+      expect(s.stalls.dessert.hp).toBe(pos.x === 35 ? 6485 : 6500);
     }
   });
 
@@ -303,9 +303,9 @@ describe('R1 combat profiles and independent perks', () => {
         aim: { x: 20, y: 12 },
       });
       expect(p.pos).toEqual({ x: kind === 'bombs' ? 19 : 12, y: 12 });
-      expect(p.ttlTicks).toBe(kind === 'bombs' ? 24 : kind === 'gun' ? 12 : 15);
+      expect(p.ttlTicks).toBe(kind === 'bombs' ? 24 : kind === 'gun' ? 11 : 15);
       advance(s, 1);
-      expect(p.ttlTicks).toBe(kind === 'bombs' ? 23 : kind === 'gun' ? 11 : 14);
+      expect(p.ttlTicks).toBe(kind === 'bombs' ? 23 : kind === 'gun' ? 10 : 14);
       expect(p.pos.x).toBeCloseTo(kind === 'bombs' ? 19 : kind === 'gun' ? 12.9 : 12.6, 9);
     }
   });
@@ -336,7 +336,7 @@ describe('R1 combat profiles and independent perks', () => {
           u.bombsSuper = false;
         }
         advance(s, 25);
-        expect(unit(s, 3).hp).toBe(kind === 'gun' ? 88 : kind === 'heavy' ? 58 : 55);
+        expect(unit(s, 3).hp).toBe(kind === 'gun' ? 88 : kind === 'heavy' ? 35 : 55);
         expect(s.events).toContainEqual(
           expect.objectContaining({ kind: 'hit', target: 3, source: kind, super: true }),
         );
@@ -351,8 +351,8 @@ describe('R1 combat profiles and independent perks', () => {
     u.bombsSuper = true;
     u.gun = { kind: 'heavy', ammoCooldownTicks: 17 };
     unit(s, 0).pos = { x: 4, y: 12 };
-    unit(s, 3).pos = { x: 2.8, y: 12 };
-    unit(s, 4).pos = { x: 2.8001, y: 12 };
+    unit(s, 3).pos = { x: 2.25, y: 12 };
+    unit(s, 4).pos = { x: 2.2501, y: 12 };
     unit(s, 1).pos = { x: 0, y: 12 };
     const p = shot(s, { throwBomb: true, aim: { x: 0, y: 12 } });
     expect(p.super).toBe(true);
@@ -418,7 +418,7 @@ describe('R1 combat profiles and independent perks', () => {
     expect(unit(s, 0).deadUntilTick).toBe(102);
     s = step(s, new Map());
     expect(unit(s, 0)).toMatchObject({
-      hp: 125,
+      hp: 101,
       gun: null,
       bombs: 0,
       bombsSuper: false,
@@ -427,7 +427,7 @@ describe('R1 combat profiles and independent perks', () => {
       deadUntilTick: null,
       pos: { x: 5, y: 17.2 },
     });
-    expect(unitMaxHp(unit(s, 0))).toBe(125);
+    expect(unitMaxHp(unit(s, 0))).toBe(101);
   });
 
   it('superBuddy_moves_1_1_times_base_and_carry_speed', () => {
@@ -439,13 +439,13 @@ describe('R1 combat profiles and independent perks', () => {
         // Equipment does not grant the persistent speed/HP perk.
         unit(s, 0).gun = { kind: 'heavy', super: true, ammoCooldownTicks: 0 };
         unit(s, 0).bombsSuper = true;
-        expect(unitMaxHp(unit(s, 0))).toBe(superBuddy ? 125 : 100);
+        expect(unitMaxHp(unit(s, 0))).toBe(superBuddy ? 101 : 100);
         expect(unitMoveSpeed(unit(s, 0))).toBe(
-          (carrying === null ? 6 : 4) * (superBuddy ? 1.1 : 1),
+          (carrying === null ? 6 : 4) * (superBuddy ? 1.01 : 1),
         );
         const next = step(s, new Map([[0, { ...idle, move: { x: 1, y: 0 } }]]));
         expect(unit(next, 0).pos.x - 12).toBeCloseTo(
-          (carrying === null ? 0.3 : 0.2) * (superBuddy ? 1.1 : 1),
+          (carrying === null ? 0.3 : 0.2) * (superBuddy ? 1.01 : 1),
           10,
         );
         expect(unit(s, 0).pos).toEqual({ x: 12, y: 12 }); // step remains pure

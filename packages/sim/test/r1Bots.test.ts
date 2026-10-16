@@ -265,6 +265,28 @@ describe('R1 bot decisions and natural traffic', () => {
     }
   });
 
+  it('reassigns_the_guard_when_its_default_unit_becomes_the_builder', () => {
+    // Equipment-aware builder election must not silently remove base defence.
+    for (const team of teams) {
+      const s = createMatch(1, { humanUnit: null });
+      grow(s, team, TEAM_CAP);
+      const [heavy, builder, defender, attacker] = mates(s, team);
+      heavy!.gun = { kind: 'heavy', ammoCooldownTicks: 0 };
+      expect(teamNeeds(s, team)).toBe('bombs');
+      expect(botGoal(s, heavy!.id)).toBe('attack');
+      expect(botGoal(s, builder!.id)).toBe('fetch');
+      expect(botGoal(s, defender!.id)).toBe('guard');
+      expect(botGoal(s, attacker!.id)).toBe('attack');
+      builder!.gun = { kind: 'heavy', ammoCooldownTicks: 0 };
+      expect(botGoal(s, heavy!.id)).toBe('attack');
+      expect(botGoal(s, builder!.id)).toBe('attack');
+      expect(botGoal(s, defender!.id)).toBe('fetch');
+      expect(botGoal(s, attacker!.id)).toBe('guard');
+      s.commands[team] = 'attack';
+      expect(botGoal(s, attacker!.id)).toBe('attack');
+    }
+  });
+
   it('heavy_and_super_ranges_match_combat', () => {
     for (const team of teams)
       for (const kind of ['gun', 'heavy'] as const) {

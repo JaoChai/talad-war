@@ -17,7 +17,7 @@ export const DROP_INTERVAL_CENTER_TICKS = 60;
 export const DROP_INTERVAL_SIDE_TICKS = 140;
 export const DROP_FALL_TICKS = 30;
 export const MAX_GROUND_CRATES = 10;
-export const SUPER_CRATE_CHANCE = 1 / 8;
+export const SUPER_CRATE_CHANCE = 1 / 16;
 
 /** A resting crate must sit at least this far inside the arena bounds. */
 export const CRATE_MARGIN = 0.1;
@@ -48,18 +48,18 @@ export const RESPAWN_TICKS = 100;
 
 /** R1 profiles: normal v1 values above remain unchanged. */
 export const SUPER_GUN_COOLDOWN_TICKS = 5;
-export const SUPER_GUN_RANGE = 10.8;
+export const SUPER_GUN_RANGE = 9.9;
 export const SUPER_BOMBS_PER_RECIPE = 5;
-export const SUPER_BOMB_RADIUS = 2.8;
-export const SUPER_BUDDY_MAX_HP = 125;
-export const SUPER_BUDDY_SPEED_MULT = 1.1;
-export const HEAVY_DMG = 30;
-export const SUPER_HEAVY_DMG = 42;
+export const SUPER_BOMB_RADIUS = 2.25;
+export const SUPER_BUDDY_MAX_HP = 101;
+export const SUPER_BUDDY_SPEED_MULT = 1.01;
+export const HEAVY_DMG = 60;
+export const SUPER_HEAVY_DMG = 65;
 export const HEAVY_RANGE = 9;
 export const HEAVY_COOLDOWN_TICKS = 30;
 export const COCONUT_SPEED = 12;
-export const HEAVY_RADIUS = 1.6;
-export const HEAVY_STALL_MULT = 2;
+export const HEAVY_RADIUS = 2.4;
+export const HEAVY_STALL_MULT = 0.25;
 export const BOT_HEAVY_MIN_SUPPLY = 4;
 
 export const PAD_CELL_SIZE = 1.5;

@@ -1,5 +1,5 @@
 /** Bumped with every behavioral sim change; replays pin this version. */
-export const SIM_VERSION = '0.2.3';
+export const SIM_VERSION = '0.2.4';
 
 export * from './autoAim';
 export * from './bots/brain';
