@@ -60,6 +60,7 @@ export const HEAVY_COOLDOWN_TICKS = 30;
 export const COCONUT_SPEED = 12;
 export const HEAVY_RADIUS = 1.6;
 export const HEAVY_STALL_MULT = 2;
+export const BOT_HEAVY_MIN_SUPPLY = 4;
 
 export const PAD_CELL_SIZE = 1.5;
 export const PAD_FLOOR = 2; // 2x2 floor cells -> 4 pad columns

@@ -1,4 +1,4 @@
-import { TEAM_CAP } from '../constants';
+import { BOT_HEAVY_MIN_SUPPLY, TEAM_CAP } from '../constants';
 import { unitDead } from '../open';
 import type { Recipe } from '../pad';
 import type { MatchState, SquadCommand, Team, Unit, UnitId } from '../types';
@@ -6,40 +6,58 @@ import type { MatchState, SquadCommand, Team, Unit, UnitId } from '../types';
 /** What a bot should be doing this tick — derived purely from the squad state. */
 export type BotGoal = 'attack' | 'guard' | 'fetch';
 
-/**
- * Squad command -> per-bot goal (plan Task 5 contract). The team command wins;
- * with `null`, the default role goes by the unit's index among its team's LIVING
- * bots (ascending id): 1st fetch, 2nd guard, 3rd+ attack. An all-bot team (the
- * enemy side of a human match, or either side of a bot-vs-bot match) additionally
- * switches its whole team to `attack` once its living units hold >= 2 guns, and
- * any living bomb carrier attacks regardless of its default role — a loadout
- * sitting on the fetcher is wasted, and the attack phase is what throws it;
- * when the bombs run out the carrier falls back to its default role (usually
- * fetch) and rebuilds.
- */
+/** Explicit commands win; autonomous squads retain one useful builder while needed. */
 export function botGoal(s: MatchState, unitId: UnitId): BotGoal {
   const unit = s.units.find((u) => u.id === unitId);
   if (unit === undefined) return 'guard';
   const command: SquadCommand = s.commands[unit.team];
   if (command !== null) return command;
   if (allBotTeam(s, unit.team)) {
-    if (livingGunCount(s, unit.team) >= 2) return 'attack'; // plan Task 5's whole-team switch
-    if (unit.bombs > 0) return 'attack'; // the carrier must deliver its bombs to the stall
+    const needed = teamNeeds(s, unit.team);
+    if (needed !== null) {
+      const eligible = s.units.filter(
+        (u) =>
+          u.team === unit.team &&
+          u.isBot &&
+          !unitDead(u) &&
+          (u.carrying !== null || (u.bombs === 0 && u.gun?.kind !== 'heavy')),
+      );
+      const builder = eligible.sort(
+        (a, b) => Number(b.carrying !== null) - Number(a.carrying !== null) || a.id - b.id,
+      )[0];
+      if (builder?.id === unit.id) return 'fetch';
+    } else if (livingGunCount(s, unit.team) >= 2) return 'attack';
+    if (unit.bombs > 0 || unit.gun?.kind === 'heavy') return 'attack';
+    const goal = defaultGoal(s, unit);
+    return goal === 'fetch' ? 'attack' : goal;
   }
   return defaultGoal(s, unit);
 }
 
-/**
- * The recipe the team currently lacks: gun when no living unit holds one, else
- * bombs when none holds bombs, else buddy while the team is under the cap, else
- * null (everything covered — nothing left to build).
- */
+/** Living equipment covers needs; dead teammates still occupy the buddy cap. */
 export function teamNeeds(s: MatchState, team: Team): Recipe | null {
   const living = s.units.filter((u) => u.team === team && !unitDead(u));
   if (!living.some((u) => u.gun !== null)) return 'gun';
-  if (!living.some((u) => u.bombs > 0)) return 'bombs';
-  const teamSize = s.units.filter((u) => u.team === team).length; // alive + dead (matches padPreview)
-  return teamSize < TEAM_CAP ? 'buddy' : null;
+  const pad = s.pads[team];
+  const compatible = pad.cells.every((c) => c[1] === null);
+  const floorCount = compatible ? pad.cells.filter((c) => c[0] !== null).length : 0;
+  const heavyAllowed = !s.itemBans?.[team]?.includes('heavy');
+  // Once the third floor cell is down, finish even if the supply is interrupted.
+  if (heavyAllowed && compatible && floorCount >= 3) return 'heavy';
+  const hasBombs = living.some((u) => u.bombs > 0);
+  const teamSize = s.units.filter((u) => u.team === team).length;
+  if (hasBombs && teamSize < TEAM_CAP) return 'buddy';
+  const carried = new Set(living.flatMap((u) => (u.carrying === null ? [] : [u.carrying])));
+  const supply = floorCount + carried.size + s.crates.filter((c) => c.state === 'ground').length;
+  const wantsHeavy =
+    heavyAllowed &&
+    compatible &&
+    !living.some((u) => u.gun?.kind === 'heavy') &&
+    supply >= BOT_HEAVY_MIN_SUPPLY;
+  if (wantsHeavy && teamSize >= 4) return 'heavy';
+  if (!hasBombs) return 'bombs';
+  if (teamSize < TEAM_CAP) return 'buddy';
+  return wantsHeavy ? 'heavy' : null;
 }
 
 function allBotTeam(s: MatchState, team: Team): boolean {

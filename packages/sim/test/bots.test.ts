@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BOMB_DMG,
-  BOMB_STALL_MULT,
-  GUN_DMG,
   PAD_ORIGINS,
-  SLAP_DMG,
   STALL_MAX_HP,
   UNIT_SPEED,
   botGoal,
@@ -230,12 +226,16 @@ describe('bots: botGoal contract', () => {
     expect(botGoal(s, 5)).toBe('guard');
   });
 
-  it('an all-bot team switches to attack once its living units hold >= 2 guns', () => {
+  it('an all-bot team switches with >= 2 weapons only when no build is needed', () => {
     const s = createMatch(1, { humanUnit: null });
     must(s.units.find((u) => u.id === 0)).gun = { ammoCooldownTicks: 0 };
     expect(botGoal(s, 0)).toBe('fetch'); // one gun: defaults still apply (0 = 1st bot)
     expect(botGoal(s, 1)).toBe('guard');
     must(s.units.find((u) => u.id === 1)).gun = { ammoCooldownTicks: 0 };
+    expect(botGoal(s, 0)).toBe('fetch'); // still needs bombs/buddies
+    must(s.units.find((u) => u.id === 1)).bombs = 1;
+    const base = must(s.units.find((u) => u.id === 2));
+    s.units.push({ ...structuredClone(base), id: 6 }, { ...structuredClone(base), id: 7 });
     for (const id of [0, 1, 2]) expect(botGoal(s, id)).toBe('attack');
     // The other team holds no guns: it keeps its default slots (3rd bot attacks
     // by position, not by the switch).
@@ -378,21 +378,20 @@ describe('bots: mirror symmetry (card t_38d70034)', () => {
 /**
  * Full-match acceptance (card t_38d70034): 200 all-bot seeds (the card's report
  * scale) at current constants must finish (no timeouts), use the whole loadout
- * (bombs opened and thrown), put >= 25% of stall damage on bullets+bombs, and
+ * (bombs opened and thrown), put >= 25% of stall damage on bullets+bombs+heavy, and
  * take at least 60 s at the median (sanity floor only). There is deliberately
  * no pacing ceiling: plan Task 6 tunes constants toward a 300-480 s median, so
- * an upper bound here would block that card. Stall-hit sources are told apart
- * by their damage value: SLAP_DMG, GUN_DMG and BOMB_DMG * BOMB_STALL_MULT are
- * the only three amounts a stall can take.
+ * an upper bound here would block that card. Explicit hit.source classifies
+ * normal/super damage without guessing from numeric damage values.
  */
 describe('bots: full-match acceptance (card t_38d70034)', () => {
-  it('200 seeds: bombs opened >= 20, explosions >= 20, bullets+bombs >= 25% of stall damage, median >= 60 s, 0 timeouts', () => {
+  it('200 seeds: bombs opened >= 20, explosions >= 20, bullets+bombs+heavy >= 25% of stall damage, median >= 60 s, 0 timeouts', () => {
     const SEEDS = 200;
-    const bombStallDmg = BOMB_DMG * BOMB_STALL_MULT;
+
     const CAP_TICKS = 900 * 20; // 15 min
     let bombsOpened = 0;
     let explosions = 0;
-    const stallDmg = { slap: 0, bullet: 0, bomb: 0 };
+    const stallDmg = { slap: 0, gun: 0, bombs: 0, heavy: 0 };
     const durations: number[] = [];
     let fruitWins = 0;
     let timeouts = 0;
@@ -404,9 +403,15 @@ describe('bots: full-match acceptance (card t_38d70034)', () => {
           if (e.kind === 'opened' && e.recipe === 'bombs') bombsOpened++;
           else if (e.kind === 'explosion') explosions++;
           else if (e.kind === 'hit' && typeof e.target === 'string') {
-            if (e.dmg === bombStallDmg) stallDmg.bomb += bombStallDmg;
-            else if (e.dmg === GUN_DMG) stallDmg.bullet += GUN_DMG;
-            else if (e.dmg === SLAP_DMG) stallDmg.slap += SLAP_DMG;
+            if (
+              e.source !== 'slap' &&
+              e.source !== 'gun' &&
+              e.source !== 'bombs' &&
+              e.source !== 'heavy'
+            )
+              throw new Error(`Unclassified stall hit: ${String(e.source)}`);
+            expect(typeof e.dmg).toBe('number');
+            stallDmg[e.source] += e.dmg as number;
           }
         }
       }
@@ -417,14 +422,14 @@ describe('bots: full-match acceptance (card t_38d70034)', () => {
     const sorted = [...durations].sort((a, b) => a - b);
     const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
     const p90 = sorted[Math.min(sorted.length - 1, Math.ceil(0.9 * sorted.length) - 1)] ?? 0;
-    const total = stallDmg.slap + stallDmg.bullet + stallDmg.bomb;
-    const rangedShare = total === 0 ? 0 : (stallDmg.bullet + stallDmg.bomb) / total;
+    const total = stallDmg.slap + stallDmg.gun + stallDmg.bombs + stallDmg.heavy;
+    const rangedShare = total === 0 ? 0 : (stallDmg.gun + stallDmg.bombs + stallDmg.heavy) / total;
     const winRate = fruitWins / SEEDS;
     console.log(
       `[full-match] wins fruit ${fruitWins}/${SEEDS} (${(winRate * 100).toFixed(1)}%), ` +
         `median ${median.toFixed(1)} s, p90 ${p90.toFixed(1)} s, timeouts ${timeouts}, ` +
         `bombsOpened ${bombsOpened}, explosions ${explosions}, ` +
-        `stall dmg slap ${stallDmg.slap} / bullet ${stallDmg.bullet} / bomb ${stallDmg.bomb} ` +
+        `stall dmg slap ${stallDmg.slap} / gun ${stallDmg.gun} / bombs ${stallDmg.bombs} / heavy ${stallDmg.heavy} ` +
         `(${(rangedShare * 100).toFixed(1)}% ranged)`,
     );
     expect(bombsOpened).toBeGreaterThanOrEqual(20);
