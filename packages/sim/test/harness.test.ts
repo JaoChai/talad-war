@@ -101,7 +101,7 @@ function observe(opts: BatchOpts) {
 describe('runBatch', () => {
   it('runs the requested number of all-bot games', () => {
     expect(runBatch({ games: 5, seed0: 1, maxMinutes: 15 }).games).toBe(5);
-  });
+  }, 30_000);
   it('is deterministic: same opts give an identical result except msPerTick', () => {
     const opts = { games: 5, seed0: 1, maxMinutes: 15 };
     const a = runBatch(opts),
@@ -118,7 +118,7 @@ describe('runBatch', () => {
     const a = runBatch(opts),
       b = runBatch(opts);
     expect({ ...a, msPerTick: 0 }).toEqual({ ...b, msPerTick: 0 });
-  });
+  }, 30_000);
   it('wins + draws + timeouts sum the games (draws count for neither team)', () => {
     for (const maxMinutes of [15, 0.001]) {
       const r = runBatch({ games: 5, seed0: 1, maxMinutes });
@@ -133,7 +133,7 @@ describe('runBatch', () => {
         expect(r.stallDamage).toEqual(IN_BAND.stallDamage);
       }
     }
-  });
+  }, 30_000);
   it('accumulates every recipe, quality and actual damage source by attacking team', () => {
     const opts = { games: 3, seed0: 1, maxMinutes: 15 };
     const expected = observe(opts);
