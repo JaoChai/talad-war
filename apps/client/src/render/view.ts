@@ -28,6 +28,8 @@ const HURT_FLASH_MS = 220;
 const STALL_FLASH_MS = 200;
 const STALL_CUE_GAP_MS = 200;
 const STALL_SHAKE_MS = 160;
+const GROUND_CRATE_WIDTH = 2.2 * STAGE_SCALE;
+const WINDUP_MS = 110;
 
 interface UnitView {
   sprite: Phaser.GameObjects.Sprite;
@@ -158,12 +160,16 @@ export class MatchView {
       const attacking = elapsed >= 0 && elapsed < 220;
       const pulse =
         attacking && !this.reducedMotion.matches ? Math.sin((Math.PI * elapsed) / 220) : 0;
+      const slapPunch =
+        attacking && elapsed >= WINDUP_MS && !this.reducedMotion.matches
+          ? Math.sin((Math.PI * (elapsed - WINDUP_MS)) / (220 - WINDUP_MS))
+          : 0;
       view.sprite.setPosition(
-        at.x + view.attackDir.x * 12 * pulse,
-        drawY + view.attackDir.y * 12 * pulse,
+        at.x + view.attackDir.x * (12 * pulse + 6 * slapPunch),
+        drawY + view.attackDir.y * (12 * pulse + 6 * slapPunch),
       );
       view.sprite.setDisplaySize(
-        UNIT_DISPLAY_HEIGHT * (1 + 0.08 * pulse),
+        UNIT_DISPLAY_HEIGHT * (1 + 0.08 * pulse + 0.05 * slapPunch),
         UNIT_DISPLAY_HEIGHT * (1 - 0.08 * pulse),
       );
       view.sprite.setDepth(Math.floor(drawY));
@@ -173,7 +179,7 @@ export class MatchView {
       const pose: CharacterAnim = hurt
         ? 'hurt'
         : attacking
-          ? elapsed < 80
+          ? elapsed < WINDUP_MS
             ? 'windup'
             : 'slap'
           : unit.carrying !== null
@@ -359,14 +365,22 @@ export class MatchView {
     width: number,
     height: number,
     colour: number,
+    vivid = false,
   ): Phaser.GameObjects.Container {
     const glow = this.scene.add.container(0, 0);
     glow.setName(name);
-    for (const [scale, alpha] of [
-      [1.3, 0.06],
-      [1.1, 0.1],
-      [0.85, 0.16],
-    ]) {
+    const layers = vivid
+      ? [
+          [1.6, 0.2],
+          [1.25, 0.34],
+          [0.95, 0.48],
+        ]
+      : [
+          [1.3, 0.06],
+          [1.1, 0.1],
+          [0.85, 0.16],
+        ];
+    for (const [scale, alpha] of layers) {
       glow.add(this.scene.add.ellipse(0, 0, width * scale!, height * scale!, colour, alpha));
     }
     return glow;
@@ -423,7 +437,7 @@ export class MatchView {
       if (!view) {
         view = {
           sprite: this.scene.add.sprite(0, 0, 'crate'),
-          glow: this.groundGlow(`crate-glow-${crate.id}`, 60, 22, 0xffce6b),
+          glow: this.groundGlow(`crate-glow-${crate.id}`, GROUND_CRATE_WIDTH, 26, 0xffb21f, true),
         };
         view.sprite.setName(`crate-${crate.id}`);
         this.crates.set(crate.id, view);
@@ -445,7 +459,7 @@ export class MatchView {
         );
         const texture = progress >= 1 ? 'crate' : 'crate_air';
         view.sprite.setTexture(texture);
-        this.sizeProp(view.sprite, 1.8 * STAGE_SCALE);
+        this.sizeProp(view.sprite, GROUND_CRATE_WIDTH);
         view.sprite.setY(at.y - (1 - progress) * 110);
         view.sprite.setX(at.x);
         view.sprite.setDepth(depth);
@@ -490,7 +504,14 @@ export class MatchView {
       if (crate.state === 'ground' && !this.reducedMotion.matches) {
         at.y += Math.sin((this.scene.time.now / 1200) * Math.PI * 2 + crate.id) * 2.5;
       }
-      this.sizeProp(view.sprite, crate.state === 'onPad' ? 34 : 1.8 * STAGE_SCALE);
+      this.sizeProp(
+        view.sprite,
+        crate.state === 'onPad'
+          ? 34
+          : crate.state === 'ground'
+            ? GROUND_CRATE_WIDTH
+            : 1.8 * STAGE_SCALE,
+      );
       view.sprite.setPosition(at.x, at.y);
       view.sprite.setDepth(depth);
     }

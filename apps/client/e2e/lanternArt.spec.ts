@@ -91,6 +91,12 @@ test('moving carrier loops carry; still carrier holds carry0', async ({ page }) 
   );
   expect(still.frame).toBe(10);
   expect(still.playing).toBe(false);
+  const carried = await page.evaluate(() =>
+    window.__talad
+      .artFeedback()
+      .sprites.find((s) => s.name === `crate-${window.__talad.state().units[0]!.carrying}`)!,
+  );
+  expect(carried.width).toBe(54);
 });
 
 for (const gun of [false, true]) {
@@ -109,12 +115,35 @@ for (const gun of [false, true]) {
       return h.artFeedback().sprites.find((s) => s.name === 'unit-0')!;
     }, gun);
     expect(initial.frame).toBe(14);
+    // Owner A: windup must survive about100ms, then slap about100ms,
+    // without extending the existing220ms attack window.
     await page.clock.runFor(96);
+    expect(
+      (
+        await page.evaluate(() =>
+          window.__talad.artFeedback().sprites.find((s) => s.name === 'unit-0')!,
+        )
+      ).frame,
+    ).toBe(14);
+    await page.clock.runFor(32);
     const slap = await page.evaluate(() =>
       window.__talad.artFeedback().sprites.find((s) => s.name === 'unit-0')!,
     );
     expect(slap.frame).toBe(15);
-    await page.clock.runFor(144);
+    // The punch peaks midway through slap, not at its first frame.
+    await page.clock.runFor(32);
+    const punch = await page.evaluate(() => window.__talad.unitFeedback(0));
+    console.log('slap peak', { elapsed: punch.now - punch.attackAt, width: punch.width });
+    expect(punch.width).toBeGreaterThan(101);
+    await page.clock.runFor(48);
+    expect(
+      (
+        await page.evaluate(() =>
+          window.__talad.artFeedback().sprites.find((s) => s.name === 'unit-0')!,
+        )
+      ).frame,
+    ).toBe(15);
+    await page.clock.runFor(32);
     expect(
       (
         await page.evaluate(() =>
@@ -200,7 +229,9 @@ test('props preserve manifest ratios across stall states, pad, crates, shots, bo
       expect(Math.abs(sprite.width / sprite.height / ratio - 1), key).toBeLessThan(0.02);
   }
   const ground = samples.find((s) => s.texture === 'crate')!;
-  expect(ground.width).toBeCloseTo(54, 0);
+  expect(ground.width).toBeCloseTo(66, 0);
+  expect(samples.find((s) => s.texture === 'crate_air')!.width).toBeCloseTo(66, 0);
+  expect(samples.find((s) => s.name === 'crate-902')!.width).toBe(34);
   await page.clock.runFor(160);
   for (const boom of await page.evaluate(() =>
     window.__talad.artFeedback().sprites.filter((s) => s.texture === 'explosion'),
@@ -214,6 +245,31 @@ test('props preserve manifest ratios across stall states, pad, crates, shots, bo
       ),
     ).toBeLessThan(0.02);
   }
+});
+
+test('reduced motion preserves attack poses without the extra slap lunge or punch', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const base = await page.evaluate(() => {
+    const h = window.__talad as unknown as TaladTestHooks;
+    const prev = h.state();
+    prev.units[0]!.attackCooldownTicks = 0;
+    const cur = structuredClone(prev);
+    cur.units[0]!.attackCooldownTicks = 10;
+    h.renderSnapshot(prev, cur, 0.5);
+    return h.artFeedback().sprites.find((s) => s.name === 'unit-0')!;
+  });
+  expect(base.frame).toBe(14);
+  await page.clock.runFor(160);
+  const slap = await page.evaluate(() =>
+    window.__talad.artFeedback().sprites.find((s) => s.name === 'unit-0')!,
+  );
+  expect(slap.frame).toBe(15);
+  expect(slap.width).toBe(92);
+  expect(slap.height).toBe(92);
+  expect(slap.x).toBe(base.x);
+  expect(slap.y).toBe(base.y);
 });
 
 test('top-edge carrier and its overhead crate both remain inside the canvas', async ({ page }) => {
