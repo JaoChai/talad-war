@@ -167,7 +167,9 @@ test('props preserve manifest ratios across stall states, pad, crates, shots, bo
       { id: 900, pos: { x: 14, y: 12 }, state: 'ground', landTick: 0 },
       { id: 901, pos: { x: 16, y: 12 }, state: 'falling', landTick: cur.tick + 20 },
       { id: 902, pos: { x: 18, y: 12 }, state: 'onPad', landTick: 0 },
+      { id: 903, pos: { x: 18, y: 12 }, state: 'onPad', landTick: 0 },
     ];
+    cur.pads.fruit.cells[0]![0] = 903;
     cur.pads.fruit.cells[0]![1] = 902;
     cur.projectiles = [
       {

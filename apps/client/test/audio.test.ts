@@ -105,6 +105,38 @@ describe('sfxForTick', () => {
     expect(sfxForTick(cur, cur)).toEqual([]);
     expect(sfxForTick(null, prev)).toEqual(['fire', 'throw']);
   });
+  it('new_coconut_maps_to_fire_once_not_throw', () => {
+    const cur = createMatch(1);
+    cur.projectiles = [{ ...projectile(900, 'bullet'), kind: 'coconut', super: true }];
+    expect(sfxForTick(null, cur)).toEqual(['fire']);
+    expect(sfxForTick(cur, cur)).toEqual([]);
+  });
+  it.each([undefined, false, true])(
+    'classifies every projectile independently of quality=%s',
+    (quality) => {
+      const cur = createMatch(1);
+      cur.projectiles = [
+        { ...projectile(900, 'bullet'), super: quality },
+        { ...projectile(901, 'bomb'), super: quality },
+        { ...projectile(902, 'bullet'), kind: 'coconut', super: quality },
+      ];
+      expect(sfxForTick(null, cur)).toEqual(['fire', 'throw', 'fire']);
+      const next = structuredClone(cur);
+      next.units = [];
+      next.projectiles.push({ ...projectile(903, 'bullet'), kind: 'coconut', super: quality });
+      expect(sfxForTick(cur, next)).toEqual(['fire']);
+      expect(sfxForTick(next, next)).toEqual([]);
+    },
+  );
+  it('caps the shared bullet/coconut fire key without consuming the throw budget', () => {
+    const cur = createMatch(1);
+    cur.projectiles = Array.from({ length: 5 }, (_, i) => ({
+      ...projectile(900 + i, 'bullet'),
+      kind: 'coconut' as const,
+    }));
+    cur.projectiles.push(projectile(910, 'bullet'), projectile(911, 'bomb'));
+    expect(sfxForTick(null, cur)).toEqual(['fire', 'fire', 'fire', 'throw']);
+  });
   it('caps each key independently at three per tick', () => {
     const cur = createMatch(7);
     cur.events = Array.from({ length: 6 }, () => event('hit', 0));
