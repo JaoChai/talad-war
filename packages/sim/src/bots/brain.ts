@@ -419,6 +419,12 @@ function nearestUnclaimedCrate(s: MatchState, unit: Unit, claimed: Set<CrateId>)
   const preferSuper = !s.itemBans?.[unit.team]?.includes('super');
   for (const crate of s.crates) {
     if (crate.state !== 'ground' || claimed.has(crate.id)) continue;
+    // Coincident drops cannot be separated by movement: ordinary pickup must
+    // take the lowest ID at that point first. Reserve that prerequisite using
+    // the same greedy claims, rather than wait forever for an unreachable super
+    // or pick an unrelated normal on the way there.
+    const firstAtPoint = nearestPickableCrate(s, crate.pos);
+    if (firstAtPoint === null || claimed.has(firstAtPoint.id)) continue;
     const d2 = dist2(unit.pos, crate.pos);
     const quality = preferSuper ? Number(crate.kind === 'super') : 0;
     const bestQuality = preferSuper ? Number(best?.kind === 'super') : 0;
@@ -431,7 +437,9 @@ function nearestUnclaimedCrate(s: MatchState, unit: Unit, claimed: Set<CrateId>)
       bestD2 = d2;
     }
   }
-  return best;
+  // At the chosen point its own crate is distance zero, so only exact
+  // co-location/lower-ID ties can redirect the claim (never nearby normals).
+  return best === null ? null : nearestPickableCrate(s, best.pos);
 }
 
 /**

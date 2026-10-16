@@ -3,6 +3,7 @@ import {
   botGoal,
   botInput,
   createMatch,
+  dropCrateAt,
   padCellCenter,
   stateHash,
   step,
@@ -138,6 +139,74 @@ describe('R1 bot decisions and natural traffic', () => {
       s.itemBans = { [team]: ['super'] };
       expect(botInput(s, a!.id).pickDrop).toBe(true);
       expect(botInput(s, b!.id).move.x).toBeGreaterThan(0);
+    }
+  });
+
+  it.each(teams)('coincident_drops_make_pickup_and_crafting_progress_for_%s', (team) => {
+    // A super claim must not wait forever for a physically impossible tie pickup.
+    for (const coincident of [true, false]) {
+      let s = createMatch(1, { humanUnit: null });
+      const u = mates(s, team)[0]!;
+      s.units = [u];
+      s.commands[team] = 'fetch';
+      u.pos = { x: 20, y: 12 };
+      s.crates = [
+        { id: 100, kind: 'normal', state: 'carried', pos: { ...u.pos }, landTick: 0 },
+        { id: 101, kind: 'super', state: 'carried', pos: { ...u.pos }, landTick: 0 },
+      ];
+      s.nextId = 102;
+      const normalPos = coincident ? u.pos : { x: team === 'fruit' ? 18 : 22, y: 12 };
+      dropCrateAt(s, 100, normalPos);
+      dropCrateAt(s, 101, u.pos);
+      const initial = structuredClone(s);
+      const hash = stateHash(s);
+      botInput(s, u.id);
+      expect(s).toEqual(initial);
+      expect(stateHash(s)).toBe(hash);
+      const picked: number[] = [];
+      let openings = 0;
+      for (let tick = 0; tick < 600; tick++) {
+        s = step(s, new Map());
+        for (const event of s.events) {
+          if (event.kind === 'cratePick') picked.push(event.crateId as number);
+          if (event.kind === 'opened') openings++;
+        }
+      }
+      expect(picked[0]).toBe(coincident ? 100 : 101);
+      expect(picked).toContain(101); // super becomes reachable after the normal blocker
+      expect(openings).toBeGreaterThan(0);
+      // The complete ordinary-action recovery also replays without hidden bot memory.
+      let replay = initial;
+      for (let tick = 0; tick < 600; tick++) replay = step(replay, new Map());
+      expect(replay).toEqual(s);
+      expect(stateHash(replay)).toBe(stateHash(s));
+    }
+  });
+
+  it('coincident_blocker_claims_are_shared_without_grabbing_unrelated_normals', () => {
+    for (const team of teams) {
+      let s = createMatch(1, { humanUnit: null });
+      const [a, b] = mates(s, team);
+      s.units = [a!, b!];
+      s.commands[team] = 'fetch';
+      a!.pos = { x: 20, y: 12 };
+      b!.pos = { x: 20, y: 12 };
+      const far = team === 'fruit' ? { x: 24, y: 12 } : { x: 16, y: 12 };
+      s.crates = [
+        { id: 100, kind: 'normal', state: 'ground', pos: { x: 20, y: 12 }, landTick: 0 },
+        { id: 101, kind: 'super', state: 'ground', pos: { x: 20, y: 12 }, landTick: 0 },
+        { id: 102, kind: 'super', state: 'ground', pos: far, landTick: 0 },
+        { id: 103, kind: 'normal', state: 'ground', pos: { x: 20, y: 12 }, landTick: 0 },
+      ];
+      s.nextId = 104;
+      expect(botInput(s, a!.id).pickDrop).toBe(true);
+      const second = botInput(s, b!.id);
+      expect(second.pickDrop).toBe(false);
+      expect(second.move.x * (team === 'fruit' ? 1 : -1)).toBeGreaterThan(0);
+      s = step(s, new Map());
+      expect(s.events.filter((e) => e.kind === 'cratePick').map((e) => e.crateId)).toEqual([100]);
+      expect(s.units[0]!.carrying).toBe(100);
+      expect(s.units[1]!.carrying).toBeNull();
     }
   });
 
