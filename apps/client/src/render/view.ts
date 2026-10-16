@@ -1,5 +1,14 @@
 import Phaser from 'phaser';
-import { DROP_FALL_TICKS, STALL_MAX_HP, stallRect } from '@talad/sim';
+import {
+  DROP_FALL_TICKS,
+  DT,
+  PAD_CELL_SIZE,
+  PAD_FLOOR,
+  STALL_MAX_HP,
+  UNIT_SPEED,
+  stallRect,
+} from '@talad/sim';
+import { playCharacterPose, type ArtManifest, type CharacterAnim } from './anims';
 import type { Crate, MatchState, Team, Unit } from '@talad/sim';
 import { STAGE_SCALE, clampDrawY, padCellOffset, padCenterOffset, worldToStage } from './world';
 
@@ -11,11 +20,6 @@ const SKINS: Record<Team, string[]> = {
   fruit: ['fruit_mangosteen', 'fruit_rambutan', 'fruit_durian', 'fruit_longan'],
   dessert: ['dessert_khanomkrok', 'dessert_thongyod', 'dessert_lookchup', 'dessert_khanomchan'],
 };
-
-const IDLE_FRAME = 0;
-const RUN_FRAME = 1;
-const CARRY_FRAME = 2;
-const HURT_FRAME = 3;
 
 /** Character strip frames are 256x256 with the feet at the manifest anchor. */
 const UNIT_DISPLAY_HEIGHT = 92;
@@ -36,6 +40,7 @@ interface UnitView {
 
 interface CrateView {
   sprite: Phaser.GameObjects.Sprite;
+  glow: Phaser.GameObjects.Container;
 }
 
 interface ProjectileView {
@@ -54,6 +59,8 @@ function stallTexture(team: Team, hp: number): string {
  */
 export class MatchView {
   private readonly units = new Map<number, UnitView>();
+  private readonly manifest: ArtManifest | undefined;
+  private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   private readonly crates = new Map<number, CrateView>();
   private readonly fallingShadows = new Map<number, Phaser.GameObjects.Ellipse>();
   private readonly projectiles = new Map<number, ProjectileView>();
@@ -68,6 +75,7 @@ export class MatchView {
   private readonly humanMarker: Phaser.GameObjects.Triangle;
 
   constructor(private readonly scene: Phaser.Scene) {
+    this.manifest = scene.cache.json.get('art-manifest') as ArtManifest | undefined;
     const arena = scene.add.image(0, 0, 'arena');
     arena.setOrigin(0, 0);
     arena.setDisplaySize(scene.scale.width, scene.scale.height);
@@ -77,7 +85,7 @@ export class MatchView {
       const stall = scene.add.image(0, 0, stallTexture(team, STALL_MAX_HP));
       stall.setName(`stall-${team}`);
       stall.setData({ flashUntil: 0, shakeAt: -Infinity });
-      stall.setDisplaySize(4.6 * STAGE_SCALE, 4.6 * STAGE_SCALE * (218 / 358));
+      this.sizeProp(stall, 4.6 * STAGE_SCALE);
       stall.setOrigin(0.5, 0.72);
       this.stallSprites[team] = stall;
     }
@@ -104,6 +112,7 @@ export class MatchView {
           : 0;
       sprite.setPosition(at.x + shake, at.y);
       sprite.setTexture(stallTexture(team, stall.hp));
+      this.sizeProp(sprite, 4.6 * STAGE_SCALE);
       if (now < (sprite.getData('flashUntil') as number))
         sprite.setTint(0x995544).setTintMode(Phaser.TintModes.MULTIPLY);
       else sprite.clearTint();
@@ -134,19 +143,21 @@ export class MatchView {
       const x = before ? Phaser.Math.Linear(before.pos.x, unit.pos.x, alpha) : unit.pos.x;
       const y = before ? Phaser.Math.Linear(before.pos.y, unit.pos.y, alpha) : unit.pos.y;
       const at = worldToStage({ x, y });
-      const moving =
-        !before ||
-        Math.hypot(before.pos.x - unit.pos.x, before.pos.y - unit.pos.y) > 0.01 ||
-        alpha > 0;
+      const speed = before
+        ? Math.hypot(before.pos.x - unit.pos.x, before.pos.y - unit.pos.y) / DT
+        : 0;
+      const moving = speed > 0.2;
       const dead = unit.deadUntilTick !== null;
       view.sprite.setVisible(!dead);
       view.ring.setVisible(!dead);
       if (dead) continue;
-      const drawY = clampDrawY(at.y); // review round 1 #2: keep heads on-canvas
-      // Existing frames only: one 220ms lunge/squash, independent of render
-      // frame count. The sim's cooldown reset proves an attack really fired.
+      const drawY = this.unitDrawY(unit, at.y); // keep head and overhead cargo on-canvas
+      // The existing lunge and the art's windup/slap share one attack clock.
+      // Reduced motion keeps the pose feedback without a lunge/squash.
       const elapsed = now - view.attackAt;
-      const pulse = elapsed >= 0 && elapsed < 220 ? Math.sin((Math.PI * elapsed) / 220) : 0;
+      const attacking = elapsed >= 0 && elapsed < 220;
+      const pulse =
+        attacking && !this.reducedMotion.matches ? Math.sin((Math.PI * elapsed) / 220) : 0;
       view.sprite.setPosition(
         at.x + view.attackDir.x * 12 * pulse,
         drawY + view.attackDir.y * 12 * pulse,
@@ -159,14 +170,25 @@ export class MatchView {
       view.ring.setPosition(at.x, drawY - 2);
       view.ring.setDepth(Math.floor(drawY) - 1);
       const hurt = now < view.hurtUntil;
-      const frame = hurt
-        ? HURT_FRAME
-        : unit.carrying !== null
-          ? CARRY_FRAME
-          : moving
-            ? RUN_FRAME
-            : IDLE_FRAME;
-      view.sprite.setFrame(frame);
+      const pose: CharacterAnim = hurt
+        ? 'hurt'
+        : attacking
+          ? elapsed < 80
+            ? 'windup'
+            : 'slap'
+          : unit.carrying !== null
+            ? 'carry'
+            : moving
+              ? 'run'
+              : 'idle';
+      view.sprite.anims.timeScale =
+        pose === 'run' ? Phaser.Math.Clamp(speed / UNIT_SPEED, 0.6, 1.4) : 1;
+      playCharacterPose(
+        view.sprite,
+        this.manifest?.characters[view.sprite.texture.key],
+        pose,
+        this.reducedMotion.matches || (pose === 'carry' && !moving),
+      );
       view.sprite.setFlipX((pulse > 0 ? view.attackDir.x : unit.facing.x) < -0.01);
     }
 
@@ -178,10 +200,16 @@ export class MatchView {
       const hy = hBefore ? Phaser.Math.Linear(hBefore.pos.y, human.pos.y, alpha) : human.pos.y;
       const at = worldToStage({ x: hx, y: hy });
       // Marker rides the clamped position and never leaves the canvas.
-      const baseY = clampDrawY(at.y);
+      const baseY = this.unitDrawY(human, at.y);
       this.humanMarker.setPosition(
         at.x,
-        Math.max(baseY - UNIT_DISPLAY_HEIGHT - 6 + Math.sin(now / 250) * 3, 12),
+        Math.max(
+          baseY -
+            UNIT_DISPLAY_HEIGHT -
+            6 +
+            (this.reducedMotion.matches ? 0 : Math.sin(now / 250) * 3),
+          12,
+        ),
       );
       this.humanMarker.setVisible(true);
     } else {
@@ -200,7 +228,8 @@ export class MatchView {
     const skin = skins[Math.min(Math.max(teamMates, 0), skins.length - 1)] ?? skins[0]!;
     const sprite = this.scene.add.sprite(0, 0, skin, 0);
     sprite.setName(`unit-${unit.id}`);
-    sprite.setOrigin(0.5, UNIT_ANCHOR_Y);
+    const anchor = this.manifest?.characters[skin]?.anchor;
+    sprite.setOrigin(anchor?.[0] ?? 0.5, anchor?.[1] ?? UNIT_ANCHOR_Y);
     sprite.setDisplaySize(UNIT_DISPLAY_HEIGHT, UNIT_DISPLAY_HEIGHT);
     const ring = this.scene.add.ellipse(0, 0, 44, 15, TEAM_COLOURS[unit.team], 0.4);
     const view: UnitView = {
@@ -305,6 +334,44 @@ export class MatchView {
     });
   }
 
+  /** The raised crate extends above the 92px body: reserve its real height too. */
+  private unitDrawY(unit: Unit, y: number): number {
+    const base = clampDrawY(y);
+    if (unit.carrying === null) return base;
+    const art = this.manifest?.props.crate;
+    const crateHeight = art ? (1.8 * STAGE_SCALE * art.height) / art.width : 0;
+    return Math.max(base, (207 / 256) * UNIT_DISPLAY_HEIGHT + crateHeight + 2);
+  }
+
+  /** Width is a design choice; height always comes from the cached art manifest. */
+  private sizeProp(
+    sprite: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite,
+    width: number,
+  ): void {
+    const art = this.manifest?.props[sprite.texture.key];
+    const ratio = art ? art.height / art.width : sprite.height / sprite.width;
+    sprite.setDisplaySize(width, width * ratio);
+  }
+
+  /** Layered ellipses create a soft glow without a per-frame blur/filter cost. */
+  private groundGlow(
+    name: string,
+    width: number,
+    height: number,
+    colour: number,
+  ): Phaser.GameObjects.Container {
+    const glow = this.scene.add.container(0, 0);
+    glow.setName(name);
+    for (const [scale, alpha] of [
+      [1.3, 0.06],
+      [1.1, 0.1],
+      [0.85, 0.16],
+    ]) {
+      glow.add(this.scene.add.ellipse(0, 0, width * scale!, height * scale!, colour, alpha));
+    }
+    return glow;
+  }
+
   private syncPads(cur: MatchState): void {
     for (const team of ['fruit', 'dessert'] as const) {
       const pad = cur.pads[team];
@@ -312,8 +379,18 @@ export class MatchView {
       let sprite = this.padSprites.get(key);
       if (!sprite) {
         sprite = this.scene.add.image(0, 0, key);
-        sprite.setDisplaySize(6.4 * STAGE_SCALE, 6.4 * STAGE_SCALE * (153 / 311));
-        sprite.setOrigin(0.5, 0.6);
+        const width = PAD_FLOOR * PAD_CELL_SIZE * STAGE_SCALE;
+        this.sizeProp(sprite, width);
+        // Painted top-surface centre is at 35% of the trimmed image height.
+        sprite.setOrigin(0.5, 0.35);
+        const glow = this.groundGlow(
+          `pad-glow-${team}`,
+          width * 1.2,
+          width * 0.8,
+          TEAM_COLOURS[team],
+        );
+        glow.setDepth(-6);
+        sprite.setData('glow', glow);
         sprite.setDepth(-5);
         this.padSprites.set(key, sprite);
       }
@@ -322,6 +399,7 @@ export class MatchView {
         y: pad.origin.y + padCenterOffset().y,
       });
       sprite.setPosition(center.x, center.y);
+      (sprite.getData('glow') as Phaser.GameObjects.Container).setPosition(center.x, center.y);
     }
   }
 
@@ -343,8 +421,11 @@ export class MatchView {
       alive.add(crate.id);
       let view = this.crates.get(crate.id);
       if (!view) {
-        view = { sprite: this.scene.add.sprite(0, 0, 'crate') };
-        view.sprite.setDisplaySize(34, 26);
+        view = {
+          sprite: this.scene.add.sprite(0, 0, 'crate'),
+          glow: this.groundGlow(`crate-glow-${crate.id}`, 60, 22, 0xffce6b),
+        };
+        view.sprite.setName(`crate-${crate.id}`);
         this.crates.set(crate.id, view);
       }
       const before = prevCrates.get(crate.id);
@@ -352,6 +433,11 @@ export class MatchView {
       const y = before ? Phaser.Math.Linear(before.pos.y, crate.pos.y, alpha) : crate.pos.y;
       let at = worldToStage({ x, y });
       let depth = Math.floor(at.y) - 2;
+      view.sprite.setOrigin(0.5, 0.5);
+      view.glow
+        .setPosition(at.x, at.y + 12)
+        .setDepth(depth - 1)
+        .setVisible(crate.state === 'ground');
       if (crate.state === 'falling') {
         const progress = Math.min(
           1,
@@ -359,6 +445,7 @@ export class MatchView {
         );
         const texture = progress >= 1 ? 'crate' : 'crate_air';
         view.sprite.setTexture(texture);
+        this.sizeProp(view.sprite, 1.8 * STAGE_SCALE);
         view.sprite.setY(at.y - (1 - progress) * 110);
         view.sprite.setX(at.x);
         view.sprite.setDepth(depth);
@@ -381,8 +468,11 @@ export class MatchView {
         if (carrier) {
           const carried = prevUnitsCarrierPos(prev, cur, carrier.id, alpha);
           at = worldToStage(carried);
-          at.y -= 40; // above the carrier's head
-          depth = Math.floor(at.y) + 2;
+          const feetY = this.unitDrawY(carrier, at.y);
+          // Carry cells have empty raised hands around y=45 (feet at y=252).
+          at.y = feetY - (207 / 256) * UNIT_DISPLAY_HEIGHT;
+          view.sprite.setOrigin(0.5, 1);
+          depth = Math.floor(feetY) + 2;
         }
       } else if (crate.state === 'onPad') {
         const spot = padOf(crate);
@@ -397,12 +487,17 @@ export class MatchView {
           depth = Math.floor(at.y) - 2;
         }
       }
+      if (crate.state === 'ground' && !this.reducedMotion.matches) {
+        at.y += Math.sin((this.scene.time.now / 1200) * Math.PI * 2 + crate.id) * 2.5;
+      }
+      this.sizeProp(view.sprite, crate.state === 'onPad' ? 34 : 1.8 * STAGE_SCALE);
       view.sprite.setPosition(at.x, at.y);
       view.sprite.setDepth(depth);
     }
     for (const [id, view] of this.crates) {
       if (!alive.has(id)) {
         view.sprite.destroy();
+        view.glow.destroy();
         this.fallingShadows.get(id)?.destroy();
         this.fallingShadows.delete(id);
         this.crates.delete(id);
@@ -419,7 +514,7 @@ export class MatchView {
       if (!view) {
         const texture = p.kind === 'bomb' ? 'bomb' : `shot_${p.team}`;
         view = { sprite: this.scene.add.sprite(0, 0, texture) };
-        view.sprite.setDisplaySize(p.kind === 'bomb' ? 26 : 34, p.kind === 'bomb' ? 26 : 12);
+        this.sizeProp(view.sprite, p.kind === 'bomb' ? 26 : 34);
         this.projectiles.set(p.id, view);
       }
       const before = prevById.get(p.id);
@@ -464,12 +559,12 @@ export class MatchView {
         if (!pos) continue;
         const at = worldToStage(pos);
         const boom = this.scene.add.sprite(at.x, at.y, 'explosion');
-        boom.setDisplaySize(30, 20);
+        this.sizeProp(boom, 30);
         boom.setDepth(900);
         this.scene.tweens.add({
           targets: boom,
-          displayWidth: 110,
-          displayHeight: 70,
+          scaleX: boom.scaleX * (110 / 30),
+          scaleY: boom.scaleY * (110 / 30),
           alpha: 0,
           duration: 340,
           onComplete: () => boom.destroy(),
@@ -514,12 +609,12 @@ export class MatchView {
     const at = worldToStage(impact);
     const spark = this.scene.add.sprite(at.x, at.y - 14, 'explosion');
     spark.setName(`stall-hit-${team}`);
-    spark.setDisplaySize(36, 30);
+    this.sizeProp(spark, 36);
     spark.setDepth(900);
     this.scene.tweens.add({
       targets: spark,
-      displayWidth: 46,
-      displayHeight: 38,
+      scaleX: spark.scaleX * (46 / 36),
+      scaleY: spark.scaleY * (46 / 36),
       alpha: 0,
       duration: 160,
       onComplete: () => spark.destroy(),

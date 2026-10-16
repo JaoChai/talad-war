@@ -33,6 +33,12 @@ export interface HookState {
 declare global {
   interface Window {
     __talad: {
+      artFeedback(): import('../src/testHooks').ArtFeedback;
+      renderSnapshot(
+        prev: import('@talad/sim').MatchState,
+        cur: import('@talad/sim').MatchState,
+        alpha: number,
+      ): void;
       stats(): MatchStats;
       audioLog(): AudioLogEntry[];
       audioReady(): boolean;

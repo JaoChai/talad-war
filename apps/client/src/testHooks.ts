@@ -34,7 +34,28 @@ export interface StallFeedback {
  * baked in by vite.config.ts's `define`, making the guard statically false and
  * dead-code eliminated (grep dist for `__talad` → 0 hits without the flag).
  */
+export interface ArtFeedback {
+  animations: { key: string; frames: number[]; fps: number; repeat: number }[];
+  sprites: {
+    name: string;
+    texture: string;
+    frame: number;
+    anim: string;
+    playing: boolean;
+    timeScale: number;
+    width: number;
+    height: number;
+    x: number;
+    y: number;
+    originX: number;
+    originY: number;
+    visible: boolean;
+  }[];
+}
+
 export interface TaladTestHooks {
+  artFeedback(): ArtFeedback;
+  renderSnapshot(prev: MatchState, cur: MatchState, alpha: number): void;
   stats(): MatchStats;
   audioLog(): AudioLogEntry[];
   audioReady(): boolean;

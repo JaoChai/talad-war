@@ -6,6 +6,10 @@ body {
   background: #1b1030;
 }
 
+body {
+  background: #1b1030 url('/art/bg_letterbox.webp') center / cover no-repeat;
+}
+
 #app {
   height: 100%;
 }
