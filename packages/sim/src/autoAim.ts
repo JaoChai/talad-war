@@ -1,4 +1,5 @@
-import { GUN_RANGE, SLAP_RANGE } from './constants';
+import { SLAP_RANGE } from './constants';
+import { weaponStats } from './items';
 import { dist2 } from './geometry';
 import type { Rect } from './geometry';
 import { stallCenter, stallRect } from './map';
@@ -19,15 +20,15 @@ function otherTeam(team: Team): Team {
 
 /**
  * Where a fire input should point when the player gave no explicit aim: the
- * nearest living enemy unit, else the enemy stall centre — within GUN_RANGE
- * when the unit is armed, SLAP_RANGE when not. Ties break to the lower enemy
+ * nearest living enemy unit, else the enemy stall centre — within the equipped
+ * weapon's range when armed, SLAP_RANGE when not. Ties break to the lower enemy
  * id. Returns null when the unit is dead or nothing is in range. Exported
  * because the client draws the target marker from it.
  */
 export function autoAimTarget(s: MatchState, unitId: UnitId): Vec2 | null {
   const unit = s.units.find((u) => u.id === unitId);
   if (unit === undefined || unitDead(unit)) return null;
-  const range = unit.gun !== null ? GUN_RANGE : SLAP_RANGE;
+  const range = unit.gun !== null ? weaponStats(unit.gun).range : SLAP_RANGE;
   let bestD2 = range * range;
   let best: Vec2 | null = null;
 

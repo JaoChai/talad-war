@@ -46,6 +46,21 @@ export const BOMB_FUSE_TICKS = 24;
 export const BOMB_STALL_MULT = 1.5;
 export const RESPAWN_TICKS = 100;
 
+/** R1 profiles: normal v1 values above remain unchanged. */
+export const SUPER_GUN_COOLDOWN_TICKS = 5;
+export const SUPER_GUN_RANGE = 10.8;
+export const SUPER_BOMBS_PER_RECIPE = 5;
+export const SUPER_BOMB_RADIUS = 2.8;
+export const SUPER_BUDDY_MAX_HP = 125;
+export const SUPER_BUDDY_SPEED_MULT = 1.1;
+export const HEAVY_DMG = 30;
+export const SUPER_HEAVY_DMG = 42;
+export const HEAVY_RANGE = 9;
+export const HEAVY_COOLDOWN_TICKS = 30;
+export const COCONUT_SPEED = 12;
+export const HEAVY_RADIUS = 1.6;
+export const HEAVY_STALL_MULT = 2;
+
 export const PAD_CELL_SIZE = 1.5;
 export const PAD_FLOOR = 2; // 2x2 floor cells -> 4 pad columns
 export const PAD_LAYERS = 2; // cells[col][layer 0..1]

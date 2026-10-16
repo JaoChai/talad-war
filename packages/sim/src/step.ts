@@ -1,4 +1,5 @@
-import { ARENA_H, ARENA_W, CARRY_SPEED, DT, UNIT_RADIUS, UNIT_SPEED } from './constants';
+import { ARENA_H, ARENA_W, DT, UNIT_RADIUS } from './constants';
+import { unitMoveSpeed } from './items';
 import { botInput } from './bots/brain';
 import { updateProjectiles, processAttacks, updateRespawns, updateWinner } from './combat';
 import { spawnCrates, tryDrop, tryPick, updateCrateFalls } from './crates';
@@ -139,7 +140,7 @@ export function step(
 }
 
 function moveUnit(unit: Unit, input: UnitInput): void {
-  const speed = unit.carrying === null ? UNIT_SPEED : CARRY_SPEED;
+  const speed = unitMoveSpeed(unit);
   const move = vecClampLength(input.move, 1);
   const dx = move.x * speed * DT;
   const dy = move.y * speed * DT;
