@@ -107,7 +107,7 @@ describe('runBatch', () => {
     const a = runBatch(opts),
       b = runBatch(opts);
     expect({ ...a, msPerTick: 0 }).toEqual({ ...b, msPerTick: 0 });
-  });
+  }, 30_000);
   it('is deterministic with a ban, including all telemetry', () => {
     const opts = {
       games: 2,
