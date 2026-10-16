@@ -8,6 +8,7 @@ import {
   matchRecipe,
   padCellAt,
   padPreview,
+  recipeResult,
   step,
 } from '../src/index';
 import type { CrateId, MatchState, Pad, Team, Unit, UnitId, UnitInput, Vec2 } from '../src/index';
@@ -260,7 +261,7 @@ describe('matchRecipe', () => {
     ).toBe('buddy');
   });
 
-  it('diagonal pairs (0-3, 1-2), three crates, four crates and empty match null', () => {
+  it('diagonal pairs (0-3, 1-2), three crates and empty match null; four flat matches heavy', () => {
     expect(
       matchRecipe(
         padWith([
@@ -295,7 +296,7 @@ describe('matchRecipe', () => {
           [3, 0],
         ]),
       ),
-    ).toBeNull();
+    ).toBe('heavy');
     expect(matchRecipe(padWith([]))).toBeNull();
   });
 });
@@ -303,30 +304,40 @@ describe('matchRecipe', () => {
 describe('padPreview', () => {
   it('an empty pad previews {openable:false, reason:"empty", recipe:null}', () => {
     const s = createMatch(5);
-    expect(padPreview(s, 'fruit')).toEqual({ openable: false, reason: 'empty', recipe: null });
+    expect(padPreview(s, 'fruit')).toEqual({
+      openable: false,
+      reason: 'empty',
+      recipe: null,
+      super: false,
+    });
   });
 
   it('a non-recipe arrangement previews notRecipe', () => {
     const s = createMatch(5);
     putOnPad(s, 'fruit', 0, 0, 100);
     putOnPad(s, 'fruit', 3, 0, 101); // diagonal
-    expect(padPreview(s, 'fruit')).toEqual({ openable: false, reason: 'notRecipe', recipe: null });
+    expect(padPreview(s, 'fruit')).toEqual({
+      openable: false,
+      reason: 'notRecipe',
+      recipe: null,
+      super: false,
+    });
   });
 
   it('gun and bombs recipes are openable', () => {
     const s = createMatch(5);
     putOnPad(s, 'fruit', 0, 0, 100);
-    expect(padPreview(s, 'fruit')).toEqual({ recipe: 'gun', openable: true });
+    expect(padPreview(s, 'fruit')).toEqual({ recipe: 'gun', openable: true, super: false });
 
     putOnPad(s, 'fruit', 1, 0, 101);
-    expect(padPreview(s, 'fruit')).toEqual({ recipe: 'bombs', openable: true });
+    expect(padPreview(s, 'fruit')).toEqual({ recipe: 'bombs', openable: true, super: false });
   });
 
   it('buddy at the team cap previews {openable:false, reason:"teamFull"} counting alive and dead', () => {
     const s = createMatch(5);
     putOnPad(s, 'fruit', 1, 0, 100);
     putOnPad(s, 'fruit', 1, 1, 101);
-    expect(padPreview(s, 'fruit')).toEqual({ recipe: 'buddy', openable: true });
+    expect(padPreview(s, 'fruit')).toEqual({ recipe: 'buddy', openable: true, super: false });
 
     extraUnit(s, 10, 'fruit'); // 4 fruit units
     extraUnit(s, 11, 'fruit'); // 5 = TEAM_CAP
@@ -336,7 +347,125 @@ describe('padPreview', () => {
       recipe: 'buddy',
       openable: false,
       reason: 'teamFull',
+      super: false,
     });
+  });
+});
+
+describe('R1 recipe shapes and quality', () => {
+  it('all 256 masks preserve the v1 oracle except the four-ground heavy', () => {
+    // Frozen pre-R1 matcher, including legacy floating one/two-cell fixtures.
+    function v1(pad: Pad): 'gun' | 'bombs' | 'buddy' | null {
+      const ground: number[] = [];
+      let count = 0;
+      let upper = false;
+      for (const [col, cells] of pad.cells.entries()) {
+        if (cells[0] !== null) {
+          count++;
+          ground.push(col);
+        }
+        if (cells[1] !== null) {
+          count++;
+          upper = true;
+        }
+      }
+      if (count === 1) return 'gun';
+      if (count !== 2) return null;
+      if (upper) return 'buddy';
+      const a = must(ground[0]);
+      const b = must(ground[1]);
+      return Math.abs((a % 2) - (b % 2)) + Math.abs(Math.floor(a / 2) - Math.floor(b / 2)) === 1
+        ? 'bombs'
+        : null;
+    }
+    for (let mask = 0; mask < 256; mask++) {
+      const entries: [number, number][] = [];
+      for (let bit = 0; bit < 8; bit++) {
+        if (mask & (1 << bit)) entries.push([Math.floor(bit / 2), bit % 2]);
+      }
+      const pad = padWith(entries);
+      expect(matchRecipe(pad), `mask ${mask}`).toBe(mask === 85 ? 'heavy' : v1(pad));
+    }
+  });
+
+  it('both wall orientations and four with upper cells are not heavy recipes', () => {
+    for (const cols of [
+      [0, 1],
+      [0, 2],
+      [2, 3],
+      [1, 3],
+    ]) {
+      const entries: [number, number][] = cols.flatMap((col): [number, number][] => [
+        [col, 0],
+        [col, 1],
+      ]);
+      expect(matchRecipe(padWith(entries))).toBeNull();
+    }
+    expect(
+      matchRecipe(
+        padWith([
+          [0, 0],
+          [1, 0],
+          [2, 0],
+          [3, 1],
+        ]),
+      ),
+    ).toBeNull();
+  });
+
+  it('preview_super_is_or_not_count_and_teamFull_keeps_quality', () => {
+    const s = createMatch(1);
+    s.pads.fruit.cells = [
+      [100, null],
+      [101, null],
+      [102, null],
+      [103, null],
+    ];
+    // Missing records are normal; unrelated super crates must not contaminate the result.
+    s.crates = [{ id: 999, kind: 'super', state: 'onPad', pos: { x: 0, y: 0 }, landTick: 0 }];
+    expect(recipeResult(s, 'fruit')).toEqual({ recipe: 'heavy', super: false });
+    for (const id of [100, 101]) {
+      s.crates.push({ id, kind: 'super', state: 'onPad', pos: { x: 0, y: 0 }, landTick: 0 });
+      expect(recipeResult(s, 'fruit')).toEqual({ recipe: 'heavy', super: true });
+      expect(padPreview(s, 'fruit')).toEqual({ recipe: 'heavy', super: true, openable: true });
+    }
+    s.itemBans = { dessert: ['heavy', 'super'] };
+    expect(recipeResult(s, 'fruit')).toEqual({ recipe: 'heavy', super: true });
+    s.itemBans = { fruit: ['super'] };
+    expect(padPreview(s, 'fruit')).toEqual({ recipe: 'heavy', super: false, openable: true });
+    expect(s.crates.filter((c) => c.kind === 'super')).toHaveLength(3);
+    s.itemBans = { fruit: ['heavy'] };
+    expect(recipeResult(s, 'fruit')).toBeNull();
+    expect(padPreview(s, 'fruit')).toEqual({
+      recipe: null,
+      super: false,
+      openable: false,
+      reason: 'notRecipe',
+    });
+    unitAt(s, 0, must(COL_CENTERS[0]));
+    expect(canOpen(s, 0)).toBe(false);
+    s.pads.fruit.cells = [
+      [100, 101],
+      [null, null],
+      [null, null],
+      [null, null],
+    ];
+    extraUnit(s, 10, 'fruit');
+    extraUnit(s, 11, 'fruit').deadUntilTick = 999;
+    expect(padPreview(s, 'fruit')).toEqual({
+      recipe: 'buddy',
+      super: true,
+      openable: false,
+      reason: 'teamFull',
+    });
+    s.itemBans = { fruit: ['super'] };
+    expect(padPreview(s, 'fruit')).toEqual({
+      recipe: 'buddy',
+      super: false,
+      openable: false,
+      reason: 'teamFull',
+    });
+    expect(canOpen(s, 0)).toBe(false);
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Preview, Recipe, SquadCommand } from '@talad/sim';
-import { commandName, recipeName, t, th } from '../src/i18n/th';
+import type { ItemId, Preview, Recipe, SquadCommand } from '@talad/sim';
+import { commandName, itemName, qualityName, recipeName, t, th } from '../src/i18n/th';
 
 /**
  * Enumerated from the sim unions, not a hand list: the `satisfies` clauses pin
@@ -8,7 +8,8 @@ import { commandName, recipeName, t, th } from '../src/i18n/th';
  * exhaustiveness check — if the sim gains a recipe/reason/command, typecheck
  * fails here until the row is translated.
  */
-const RECIPES = ['gun', 'bombs', 'buddy'] as const satisfies readonly Recipe[];
+const RECIPES = ['gun', 'bombs', 'buddy', 'heavy'] as const satisfies readonly Recipe[];
+const ITEMS = ['unarmed', 'gun', 'heavy', 'bombs', 'crate'] as const satisfies readonly ItemId[];
 const REASONS = ['notRecipe', 'teamFull', 'empty'] as const satisfies readonly PreviewReason[];
 const COMMANDS = ['attack', 'guard', 'fetch'] as const satisfies readonly NonNullCommand[];
 
@@ -20,13 +21,45 @@ const THAI = /[\u0E00-\u0E7F]/;
 
 describe('i18n coverage of sim unions', () => {
   it('maps every Recipe to a non-empty Thai string', () => {
-    const exhaustive: Record<Recipe, true> = { gun: true, bombs: true, buddy: true };
+    const exhaustive: Record<Recipe, true> = { gun: true, bombs: true, buddy: true, heavy: true };
     expect(Object.keys(exhaustive).length).toBe(RECIPES.length);
     for (const recipe of RECIPES) {
       const name = recipeName(recipe);
       expect(name, `recipe ${recipe}`).toBeTruthy();
       expect(name, `recipe ${recipe} is Thai`).toMatch(THAI);
     }
+  });
+
+  it('keeps exact recipe and item identities in normal and super Thai labels', () => {
+    expect(recipeName('heavy')).toBe('บาซูก้ามะพร้าว');
+    const recipeLabels: Record<Recipe, string> = {
+      gun: 'ปืนฉีดน้ำ',
+      bombs: 'ระเบิด',
+      buddy: 'ลูกทีม',
+      heavy: 'บาซูก้ามะพร้าว',
+    };
+    const itemLabels: Record<ItemId, string> = {
+      unarmed: 'มือเปล่า',
+      gun: 'ปืนฉีดน้ำ',
+      heavy: 'บาซูก้ามะพร้าว',
+      bombs: 'ระเบิด',
+      crate: 'ลัง',
+    };
+    for (const recipe of RECIPES) {
+      expect(recipeName(recipe)).toBe(recipeLabels[recipe]);
+      expect(qualityName(recipeName(recipe), false)).toBe(recipeLabels[recipe]);
+      expect(qualityName(recipeName(recipe), true)).toBe(`${recipeLabels[recipe]} พิเศษ`);
+    }
+    expect(Object.keys(itemLabels)).toHaveLength(ITEMS.length);
+    for (const item of ITEMS) {
+      expect(itemName(item)).toBe(itemLabels[item]);
+      expect(itemName(item)).toMatch(THAI);
+      expect(qualityName(itemName(item), false)).toBe(itemLabels[item]);
+      expect(qualityName(itemName(item), true)).toBe(`${itemLabels[item]} พิเศษ`);
+    }
+    expect(th.howtoBuildBody).toBe(
+      'บนแท่นของทีม: 1 ลังได้ปืน • 2 ลังข้างกันได้ระเบิด • 2 ลังซ้อนกันได้ลูกทีม • 4 ลังเต็มพื้นได้บาซูก้ามะพร้าว • ลังดาวทำให้ของพิเศษ',
+    );
   });
 
   it('maps every Preview reason to a key; all non-empty except `empty`', () => {

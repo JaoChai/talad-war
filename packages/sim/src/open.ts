@@ -1,6 +1,14 @@
-import { BOMBS_PER_RECIPE, OPEN_TICKS, SPAWN_OFFSETS, UNIT_MAX_HP } from './constants';
+import {
+  BOMBS_PER_RECIPE,
+  OPEN_TICKS,
+  SPAWN_OFFSETS,
+  SUPER_BOMBS_PER_RECIPE,
+  SUPER_BUDDY_MAX_HP,
+  TEAM_CAP,
+  UNIT_MAX_HP,
+} from './constants';
 import { stallCenter } from './map';
-import { matchRecipe } from './pad';
+import { recipeResult } from './pad';
 import type { MatchState, Pad, Team, Unit, UnitId } from './types';
 
 /** True while the unit waits for respawn — the single check Task 4 reuses. */
@@ -49,24 +57,39 @@ export function updateOpens(s: MatchState): void {
 }
 
 function finishOpen(s: MatchState, pad: Pad, opener: Unit): void {
-  const recipe = matchRecipe(pad);
+  const result = recipeResult(s, pad.team);
   pad.opening = null;
-  if (recipe === null) {
-    // Unreachable while the snapshot matches (canOpen previewed a recipe at start);
-    // fail closed rather than grant a phantom item.
+  if (
+    result === null ||
+    (result.recipe === 'buddy' && s.units.filter((u) => u.team === pad.team).length >= TEAM_CAP)
+  ) {
+    // Fail closed if a rule or the alive+dead buddy cap changed during the channel.
     s.events.push({ tick: s.tick, kind: 'openCancelled', team: pad.team });
     return;
   }
-  if (recipe === 'gun') opener.gun = { ammoCooldownTicks: 0 };
-  else if (recipe === 'bombs')
-    opener.bombs = BOMBS_PER_RECIPE; // refill, not add
-  else spawnBuddy(s, pad.team);
+  const { recipe, super: quality } = result;
+  if (recipe === 'gun')
+    opener.gun = quality
+      ? { kind: 'gun', super: true, ammoCooldownTicks: 0 }
+      : { ammoCooldownTicks: 0 };
+  else if (recipe === 'heavy') opener.gun = { kind: 'heavy', super: quality, ammoCooldownTicks: 0 };
+  else if (recipe === 'bombs') {
+    opener.bombs = quality ? SUPER_BOMBS_PER_RECIPE : BOMBS_PER_RECIPE; // replace, not add
+    opener.bombsSuper = quality;
+  } else spawnBuddy(s, pad.team, quality);
   clearPad(s, pad); // every recipe converts the whole pad
-  s.events.push({ tick: s.tick, kind: 'opened', recipe, team: pad.team });
+  s.events.push({
+    tick: s.tick,
+    kind: 'opened',
+    recipe,
+    super: quality,
+    team: pad.team,
+    unitId: opener.id,
+  });
 }
 
 /** The buddy spawns at the team's first spawn slot (setup.ts convention, walkable). */
-function spawnBuddy(s: MatchState, team: Team): void {
+function spawnBuddy(s: MatchState, team: Team, quality: boolean): void {
   const center = stallCenter(team);
   const sign = team === 'fruit' ? 1 : -1;
   const offset = SPAWN_OFFSETS[0];
@@ -82,7 +105,8 @@ function spawnBuddy(s: MatchState, team: Team): void {
     isBot: true, // bot behaviour arrives in Task 5; until then it only exists
     pos: { x: center.x + sign * offset.x, y: center.y + sign * offset.y },
     facing: team === 'fruit' ? { x: 1, y: 0 } : { x: -1, y: 0 },
-    hp: UNIT_MAX_HP,
+    hp: quality ? SUPER_BUDDY_MAX_HP : UNIT_MAX_HP,
+    ...(quality ? { superBuddy: true } : {}),
     carrying: null,
     gun: null,
     bombs: 0,

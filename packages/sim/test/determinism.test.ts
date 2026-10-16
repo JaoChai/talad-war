@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMatch, stateHash, step } from '../src/index';
+import { OPEN_TICKS, createMatch, stateHash, step } from '../src/index';
 import type {
   MatchEvent,
   MatchState,
@@ -151,6 +151,105 @@ function runPadScript(): PadRun {
     ticksWithOnPadCrate,
   };
 }
+
+describe('R1 grant replay', () => {
+  function replay(): { final: MatchState; hashes: string[]; events: MatchEvent[]; placed: number } {
+    let s = pinNoBots(createMatch(11));
+    const hashes: string[] = [];
+    const events: MatchEvent[] = [];
+    function advance(over: Partial<UnitInput> = {}): void {
+      pinNoBots(s);
+      s = step(
+        s,
+        new Map([
+          [
+            0,
+            {
+              move: { x: 0, y: 0 },
+              aim: null,
+              fire: false,
+              throwBomb: false,
+              pickDrop: false,
+              open: false,
+              ...over,
+            },
+          ],
+        ]),
+      );
+      hashes.push(stateHash(s));
+      events.push(...s.events);
+    }
+    let id = 10000;
+    let placed = 0;
+    for (const columns of [
+      [0, 1, 2, 3],
+      [0, 1],
+      [0, 0],
+    ]) {
+      for (const [i, col] of columns.entries()) {
+        const opener = must(s.units[0]);
+        opener.pos = { ...must(PAD_COL[col]) };
+        opener.carrying = id;
+        s.crates.push({
+          id: id++,
+          kind: i === 0 ? 'super' : 'normal',
+          state: 'carried',
+          pos: { ...opener.pos },
+          landTick: 0,
+        });
+        advance({ pickDrop: true });
+        expect(s.crates.find((c) => c.id === id - 1)?.state).toBe('onPad');
+        placed++;
+      }
+      advance({ open: true });
+      for (let tick = 0; tick < OPEN_TICKS; tick++) advance();
+    }
+    // Exercise real granted heavy and bomb profiles, not just staged metadata.
+    advance({ fire: true, throwBomb: true, aim: { x: 15, y: 18.75 } });
+    while (s.tick < 2000) advance();
+    return { final: s, hashes, events, placed };
+  }
+
+  it('staged super-heavy bombs and buddy openings replay full state with nonzero traffic', () => {
+    const a = replay();
+    const b = replay();
+    expect(a.events.filter((e) => e.kind === 'opened').map((e) => [e.recipe, e.super])).toEqual([
+      ['heavy', true],
+      ['bombs', true],
+      ['buddy', true],
+    ]);
+    expect(a.events.filter((e) => e.kind === 'openStarted')).toHaveLength(3);
+    expect(a.placed).toBe(8);
+    expect(
+      a.events.some((e) => e.kind === 'explosion' && e.source === 'heavy' && e.super === true),
+    ).toBe(true);
+    expect(
+      a.events.some((e) => e.kind === 'explosion' && e.source === 'bombs' && e.super === true),
+    ).toBe(true);
+    expect(a.final.units.some((u) => u.superBuddy === true)).toBe(true);
+    expect(a.hashes).toEqual(b.hashes);
+    expect(stateHash(a.final)).toBe(stateHash(b.final));
+    expect(a.final).toEqual(b.final);
+  });
+
+  it('whole-state hash is sensitive to isolated equipment perk and ban flags', () => {
+    const s = createMatch(11);
+    must(s.units[0]).gun = { ammoCooldownTicks: 0, kind: 'gun', super: false };
+    must(s.units[0]).bombs = 3;
+    must(s.units[0]).bombsSuper = false;
+    must(s.units[0]).superBuddy = false;
+    const baseline = stateHash(s);
+    for (const flag of ['gunSuper', 'heavy', 'bombsSuper', 'superBuddy', 'ban'] as const) {
+      const changed = structuredClone(s);
+      const unit = must(changed.units[0]);
+      if (flag === 'gunSuper') must(unit.gun).super = true;
+      else if (flag === 'heavy') must(unit.gun).kind = 'heavy';
+      else if (flag === 'ban') changed.itemBans = { fruit: ['super'] };
+      else unit[flag] = true;
+      expect(stateHash(changed), flag).not.toBe(baseline);
+    }
+  });
+});
 
 describe('determinism with pad traffic', () => {
   it('2000 scripted place/lift/open ticks from seed 11, run twice, produce an identical stateHash', () => {
