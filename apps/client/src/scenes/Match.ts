@@ -156,6 +156,43 @@ export class MatchScene extends Phaser.Scene {
         });
       };
       const hooks: TaladTestHooks = {
+        artFeedback: () => ({
+          animations: this.textures
+            .getTextureKeys()
+            .flatMap((key) => this.anims.getAnimsFromTexture(key))
+            .map((key) => this.anims.get(key)!)
+            .map((anim) => ({
+              key: anim.key,
+              frames: anim.frames.map((frame) => Number(frame.textureFrame)),
+              fps: anim.frameRate,
+              repeat: anim.repeat,
+            })),
+          sprites: this.children.list
+            .filter(
+              (child) =>
+                child instanceof Phaser.GameObjects.Sprite ||
+                child instanceof Phaser.GameObjects.Image,
+            )
+            .map((child) => {
+              const sprite = child as Phaser.GameObjects.Sprite;
+              return {
+                name: sprite.name,
+                texture: sprite.texture.key,
+                frame: Number(sprite.frame.name),
+                anim: sprite.anims?.currentAnim?.key ?? '',
+                playing: sprite.anims?.isPlaying ?? false,
+                timeScale: sprite.anims?.timeScale ?? 1,
+                width: sprite.displayWidth,
+                height: sprite.displayHeight,
+                x: sprite.x,
+                y: sprite.y,
+                originX: sprite.originX,
+                originY: sprite.originY,
+                visible: sprite.visible,
+              };
+            }),
+        }),
+        renderSnapshot: (prev, cur, alpha) => this.view.sync(prev, cur, alpha),
         stats: () => structuredClone(this.stats),
         audioLog: () => structuredClone(audioLog),
         audioReady: () => this.audio.isReady,

@@ -6,6 +6,10 @@ body {
   background: #1b1030;
 }
 
+body {
+  background: #1b1030 url('/art/bg_letterbox.webp') center / cover no-repeat;
+}
+
 #app {
   height: 100%;
 }
@@ -434,7 +438,7 @@ body {
   display: block;
   width: 140px;
   height: 140px;
-  background-size: 400% 100%;
+  background-size: 500% 400%;
   background-position: 0 0;
   filter: drop-shadow(0 6px 0 #100a1f80);
 }

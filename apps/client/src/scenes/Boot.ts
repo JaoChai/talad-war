@@ -1,19 +1,6 @@
 import Phaser from 'phaser';
 
-interface ArtFile {
-  file: string;
-}
-
-interface CharacterArt extends ArtFile {
-  frameWidth: number;
-  frameHeight: number;
-}
-
-interface ArtManifest {
-  characters: Record<string, CharacterArt>;
-  props: Record<string, ArtFile>;
-  arena: ArtFile;
-}
+import { createCharacterAnimations, type ArtManifest } from '../render/anims';
 
 /** `?seed=<int>` overrides the match seed; anything else is seed 1. */
 export function seedFromUrl(): number {
@@ -49,7 +36,10 @@ export class BootScene extends Phaser.Scene {
       this.load.image(key, `art/${p.file}`);
     }
     this.load.image('arena', `art/${manifest.arena.file}`);
-    this.load.once('complete', () => this.scene.start('title', { seed: seedFromUrl() }));
+    this.load.once('complete', () => {
+      createCharacterAnimations(this, manifest);
+      this.scene.start('title', { seed: seedFromUrl() });
+    });
     this.load.start();
   }
 }

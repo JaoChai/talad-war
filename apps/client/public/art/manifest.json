@@ -6,11 +6,55 @@
       "frameWidth": 256,
       "frameHeight": 256,
       "frames": [
-        "idle",
-        "run",
-        "carry",
-        "hurt"
+        "idle0",
+        "idle1",
+        "idle2",
+        "idle3",
+        "run0",
+        "run1",
+        "run2",
+        "run3",
+        "run4",
+        "run5",
+        "carry0",
+        "carry1",
+        "carry2",
+        "carry3",
+        "windup",
+        "slap",
+        "hurt",
+        "ko"
       ],
+      "anims": {
+        "idle": [
+          0,
+          4
+        ],
+        "run": [
+          4,
+          6
+        ],
+        "carry": [
+          10,
+          4
+        ],
+        "windup": [
+          14,
+          1
+        ],
+        "slap": [
+          15,
+          1
+        ],
+        "hurt": [
+          16,
+          1
+        ],
+        "ko": [
+          17,
+          1
+        ]
+      },
       "anchor": [
         0.5,
         0.984375
@@ -21,11 +65,55 @@
       "frameWidth": 256,
       "frameHeight": 256,
       "frames": [
-        "idle",
-        "run",
-        "carry",
-        "hurt"
+        "idle0",
+        "idle1",
+        "idle2",
+        "idle3",
+        "run0",
+        "run1",
+        "run2",
+        "run3",
+        "run4",
+        "run5",
+        "carry0",
+        "carry1",
+        "carry2",
+        "carry3",
+        "windup",
+        "slap",
+        "hurt",
+        "ko"
       ],
+      "anims": {
+        "idle": [
+          0,
+          4
+        ],
+        "run": [
+          4,
+          6
+        ],
+        "carry": [
+          10,
+          4
+        ],
+        "windup": [
+          14,
+          1
+        ],
+        "slap": [
+          15,
+          1
+        ],
+        "hurt": [
+          16,
+          1
+        ],
+        "ko": [
+          17,
+          1
+        ]
+      },
       "anchor": [
         0.5,
         0.984375
@@ -36,11 +124,55 @@
       "frameWidth": 256,
       "frameHeight": 256,
       "frames": [
-        "idle",
-        "run",
-        "carry",
-        "hurt"
+        "idle0",
+        "idle1",
+        "idle2",
+        "idle3",
+        "run0",
+        "run1",
+        "run2",
+        "run3",
+        "run4",
+        "run5",
+        "carry0",
+        "carry1",
+        "carry2",
+        "carry3",
+        "windup",
+        "slap",
+        "hurt",
+        "ko"
       ],
+      "anims": {
+        "idle": [
+          0,
+          4
+        ],
+        "run": [
+          4,
+          6
+        ],
+        "carry": [
+          10,
+          4
+        ],
+        "windup": [
+          14,
+          1
+        ],
+        "slap": [
+          15,
+          1
+        ],
+        "hurt": [
+          16,
+          1
+        ],
+        "ko": [
+          17,
+          1
+        ]
+      },
       "anchor": [
         0.5,
         0.984375
@@ -51,11 +183,55 @@
       "frameWidth": 256,
       "frameHeight": 256,
       "frames": [
-        "idle",
-        "run",
-        "carry",
-        "hurt"
+        "idle0",
+        "idle1",
+        "idle2",
+        "idle3",
+        "run0",
+        "run1",
+        "run2",
+        "run3",
+        "run4",
+        "run5",
+        "carry0",
+        "carry1",
+        "carry2",
+        "carry3",
+        "windup",
+        "slap",
+        "hurt",
+        "ko"
       ],
+      "anims": {
+        "idle": [
+          0,
+          4
+        ],
+        "run": [
+          4,
+          6
+        ],
+        "carry": [
+          10,
+          4
+        ],
+        "windup": [
+          14,
+          1
+        ],
+        "slap": [
+          15,
+          1
+        ],
+        "hurt": [
+          16,
+          1
+        ],
+        "ko": [
+          17,
+          1
+        ]
+      },
       "anchor": [
         0.5,
         0.984375
@@ -66,11 +242,55 @@
       "frameWidth": 256,
       "frameHeight": 256,
       "frames": [
-        "idle",
-        "run",
-        "carry",
-        "hurt"
+        "idle0",
+        "idle1",
+        "idle2",
+        "idle3",
+        "run0",
+        "run1",
+        "run2",
+        "run3",
+        "run4",
+        "run5",
+        "carry0",
+        "carry1",
+        "carry2",
+        "carry3",
+        "windup",
+        "slap",
+        "hurt",
+        "ko"
       ],
+      "anims": {
+        "idle": [
+          0,
+          4
+        ],
+        "run": [
+          4,
+          6
+        ],
+        "carry": [
+          10,
+          4
+        ],
+        "windup": [
+          14,
+          1
+        ],
+        "slap": [
+          15,
+          1
+        ],
+        "hurt": [
+          16,
+          1
+        ],
+        "ko": [
+          17,
+          1
+        ]
+      },
       "anchor": [
         0.5,
         0.984375
@@ -81,11 +301,55 @@
       "frameWidth": 256,
       "frameHeight": 256,
       "frames": [
-        "idle",
-        "run",
-        "carry",
-        "hurt"
+        "idle0",
+        "idle1",
+        "idle2",
+        "idle3",
+        "run0",
+        "run1",
+        "run2",
+        "run3",
+        "run4",
+        "run5",
+        "carry0",
+        "carry1",
+        "carry2",
+        "carry3",
+        "windup",
+        "slap",
+        "hurt",
+        "ko"
       ],
+      "anims": {
+        "idle": [
+          0,
+          4
+        ],
+        "run": [
+          4,
+          6
+        ],
+        "carry": [
+          10,
+          4
+        ],
+        "windup": [
+          14,
+          1
+        ],
+        "slap": [
+          15,
+          1
+        ],
+        "hurt": [
+          16,
+          1
+        ],
+        "ko": [
+          17,
+          1
+        ]
+      },
       "anchor": [
         0.5,
         0.984375
@@ -96,11 +360,55 @@
       "frameWidth": 256,
       "frameHeight": 256,
       "frames": [
-        "idle",
-        "run",
-        "carry",
-        "hurt"
+        "idle0",
+        "idle1",
+        "idle2",
+        "idle3",
+        "run0",
+        "run1",
+        "run2",
+        "run3",
+        "run4",
+        "run5",
+        "carry0",
+        "carry1",
+        "carry2",
+        "carry3",
+        "windup",
+        "slap",
+        "hurt",
+        "ko"
       ],
+      "anims": {
+        "idle": [
+          0,
+          4
+        ],
+        "run": [
+          4,
+          6
+        ],
+        "carry": [
+          10,
+          4
+        ],
+        "windup": [
+          14,
+          1
+        ],
+        "slap": [
+          15,
+          1
+        ],
+        "hurt": [
+          16,
+          1
+        ],
+        "ko": [
+          17,
+          1
+        ]
+      },
       "anchor": [
         0.5,
         0.984375
@@ -111,11 +419,55 @@
       "frameWidth": 256,
       "frameHeight": 256,
       "frames": [
-        "idle",
-        "run",
-        "carry",
-        "hurt"
+        "idle0",
+        "idle1",
+        "idle2",
+        "idle3",
+        "run0",
+        "run1",
+        "run2",
+        "run3",
+        "run4",
+        "run5",
+        "carry0",
+        "carry1",
+        "carry2",
+        "carry3",
+        "windup",
+        "slap",
+        "hurt",
+        "ko"
       ],
+      "anims": {
+        "idle": [
+          0,
+          4
+        ],
+        "run": [
+          4,
+          6
+        ],
+        "carry": [
+          10,
+          4
+        ],
+        "windup": [
+          14,
+          1
+        ],
+        "slap": [
+          15,
+          1
+        ],
+        "hurt": [
+          16,
+          1
+        ],
+        "ko": [
+          17,
+          1
+        ]
+      },
       "anchor": [
         0.5,
         0.984375
@@ -123,85 +475,85 @@
     }
   },
   "props": {
-    "crate": {
-      "file": "prop_crate.webp",
-      "width": 217,
-      "height": 167
-    },
-    "crate_air": {
-      "file": "prop_crate_air.webp",
-      "width": 159,
-      "height": 151
-    },
-    "crate_stack2": {
-      "file": "prop_crate_stack2.webp",
-      "width": 183,
-      "height": 190
-    },
     "stall_fruit_ok": {
       "file": "prop_stall_fruit_ok.webp",
-      "width": 358,
-      "height": 218
+      "width": 472,
+      "height": 345
     },
     "stall_fruit_damaged": {
       "file": "prop_stall_fruit_damaged.webp",
-      "width": 383,
-      "height": 222
+      "width": 474,
+      "height": 358
     },
     "stall_fruit_destroyed": {
       "file": "prop_stall_fruit_destroyed.webp",
-      "width": 443,
-      "height": 195
+      "width": 513,
+      "height": 282
     },
     "stall_dessert_ok": {
       "file": "prop_stall_dessert_ok.webp",
-      "width": 377,
-      "height": 215
+      "width": 479,
+      "height": 353
     },
     "stall_dessert_damaged": {
       "file": "prop_stall_dessert_damaged.webp",
-      "width": 391,
-      "height": 206
+      "width": 457,
+      "height": 363
     },
     "stall_dessert_destroyed": {
       "file": "prop_stall_dessert_destroyed.webp",
-      "width": 484,
-      "height": 188
+      "width": 517,
+      "height": 279
+    },
+    "crate": {
+      "file": "prop_crate.webp",
+      "width": 276,
+      "height": 216
+    },
+    "crate_air": {
+      "file": "prop_crate_air.webp",
+      "width": 243,
+      "height": 222
+    },
+    "crate_stack2": {
+      "file": "prop_crate_stack2.webp",
+      "width": 253,
+      "height": 298
     },
     "pad_fruit": {
       "file": "prop_pad_fruit.webp",
-      "width": 311,
-      "height": 153
+      "width": 370,
+      "height": 220
     },
     "pad_dessert": {
       "file": "prop_pad_dessert.webp",
-      "width": 309,
-      "height": 156
+      "width": 371,
+      "height": 221
     },
     "pad_tile_glow": {
       "file": "prop_pad_tile_glow.webp",
-      "width": 214,
-      "height": 116
-    },
-    "shot_fruit": {
-      "file": "prop_shot_fruit.webp",
-      "width": 256,
-      "height": 87
-    },
-    "shot_dessert": {
-      "file": "prop_shot_dessert.webp",
-      "width": 256,
-      "height": 107
+      "width": 268,
+      "height": 136
     },
     "bomb": {
       "file": "prop_bomb.webp",
-      "width": 153,
-      "height": 161
+      "width": 267,
+      "height": 282
+    },
+    "shot_fruit": {
+      "file": "prop_shot_fruit.webp",
+      "width": 362,
+      "height": 171
+    },
+    "shot_dessert": {
+      "file": "prop_shot_dessert.webp",
+      "width": 358,
+      "height": 179
     },
     "explosion": {
       "file": "prop_explosion.webp",
-      "width": 256,
-      "height": 163
+      "width": 468,
+      "height": 391
     }
   },
   "arena": {
