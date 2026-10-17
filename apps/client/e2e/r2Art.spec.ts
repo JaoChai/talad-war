@@ -384,6 +384,9 @@ test.describe('R2 class art', () => {
     expect(cargo.width).toBeCloseTo(54, 4);
     // Carried super crate hangs from the raised hands at 207/256 of 92 px.
     expect(body.y - cargo.y).toBeCloseTo((207 / 256) * 92, 4);
+    // §4.3: the badge never covers the carried crate — its bottom edge keeps a
+    // 4 px gap above the crate's top (centre-origin badge, origin 0.5 crate).
+    expect(badge.y + badge.height / 2).toBeLessThanOrEqual(cargo.y - cargo.height - 4 + 1e-6);
     // The §4.3 guard: drawn union top (incl. badge band) at exactly +2 +24.
     const tops = [
       body.y - body.height * body.originY,
@@ -442,9 +445,13 @@ test.describe('R2 class art', () => {
       });
       cur.units[0]!.pos = { x: 20, y: 0.45 };
       cur.units[0]!.carrying = 902;
+      // Mid-arena Giant carry: probes the same 4 px badge-vs-crate gap away
+      // from the stage top and at the 1.20x display scale.
+      cur.units[2]!.carrying = 903;
       cur.units[6]!.superBuddy = true;
       cur.crates = [
         { id: 902, kind: 'super', state: 'carried', pos: cur.units[0]!.pos, landTick: 0 },
+        { id: 903, kind: 'normal', state: 'carried', pos: cur.units[2]!.pos, landTick: 0 },
       ];
       window.__r2Frames.prev = structuredClone(cur);
       window.__talad.renderSnapshot(cur, cur, 1);
@@ -456,6 +463,12 @@ test.describe('R2 class art', () => {
     expect(find(ss, 'unit-2-head').texture).toBe('class_head_giant');
     expect(find(ss, 'unit-2').width).toBeCloseTo(92 * 1.2, 4);
     expect(find(ss, 'crate-902').texture).toBe('crate_super');
+    // Mid-arena Giant carry: badge bottom keeps 4 px above the crate top.
+    const badge2 = find(ss, 'unit-2-badge');
+    const cargo903 = find(ss, 'crate-903');
+    expect(badge2.y + badge2.height / 2).toBeLessThanOrEqual(
+      cargo903.y - cargo903.height - 4 + 1e-6,
+    );
   });
 });
 

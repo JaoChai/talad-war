@@ -12,9 +12,9 @@ import {
 import { playCharacterPose, type ArtManifest, type CharacterAnim, type HeadFrame } from './anims';
 import type { Crate, MatchState, Team, Unit } from '@talad/sim';
 import {
-  bodyBounds,
   classVisualGeometry,
-  unionBounds,
+  kitAnchor,
+  kitLayout,
   type BodyTransform,
   type VisualBounds,
 } from './classGeometry';
@@ -45,10 +45,6 @@ const CARGO_OFFSET = 207 / 256;
 const UNION_TOP_MIN = 2;
 /** R2-8: extra top headroom reserved on controlled bodies for the later arrow. */
 const CONTROL_ARROW_RESERVE = 24;
-/** Badge (24 px) plus its 4 px gap above the drawn union. */
-const KIT_BAND = 28;
-/** Star-only band (16 px + 4 px gap) for classless super buddies. */
-const STAR_BAND = 20;
 
 interface UnitView {
   sprite: Phaser.GameObjects.Sprite;
@@ -409,9 +405,11 @@ export class MatchView {
 
   /**
    * §4.3 clamp: shift the rest-pose feet DOWN only enough to keep the union of
-   * body, head accessory, carried cargo and the overhead badge/star band at or
+   * body, head accessory, carried cargo and the overhead badge/star kit at or
    * below the stage top, reserving 24 extra logical px on controlled bodies
-   * for the later control arrow. The transient attack lunge applies after
+   * for the later control arrow. The kit band comes from the same shared
+   * `kitAnchor`/`kitLayout` helpers the decorations draw with, so the clamp and
+   * the drawn result cannot disagree. The transient attack lunge applies after
    * this, as in R1. Memoised per sync on the unit view for the marker/cargo.
    */
   private unionClampFeetY(
@@ -423,14 +421,15 @@ export class MatchView {
   ): number {
     const view = this.units.get(unit.id);
     const head = view ? this.headFrameOf(view.sprite) : null;
-    const drawn = unionBounds(
-      unionBounds(bodyBounds(candidate), head ? classVisualGeometry(candidate, head).bounds : null),
+    const drawn = kitAnchor(
+      candidate,
+      head ? classVisualGeometry(candidate, head).bounds : null,
       cargoBounds,
     );
     const entry = unit.classId ? this.manifest?.classArt?.classes[unit.classId] : undefined;
     const star = unit.superBuddy === true && this.manifest?.props['badge_super'] !== undefined;
-    const kitRise = entry ? KIT_BAND : star ? STAR_BAND : 0;
-    const unionTop = drawn ? drawn.top - kitRise : -Infinity;
+    const kit = kitLayout(drawn, entry !== undefined, star);
+    const unionTop = kit ? kit.bounds.top : drawn.top;
     const required =
       UNION_TOP_MIN + (controlledUnit(cur)?.id === unit.id ? CONTROL_ARROW_RESERVE : 0);
     const feetY = base + Math.max(0, required - unionTop);

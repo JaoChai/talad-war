@@ -79,3 +79,64 @@ export function unionBounds(a: VisualBounds | null, b: VisualBounds | null): Vis
     bottom: Math.max(a.bottom, b.bottom),
   };
 }
+
+/** §4.3 overhead kit metrics (logical stage px). */
+export const BADGE_SIZE = 24;
+export const STAR_SIZE = 16;
+export const OVERHEAD_GAP = 4;
+
+/**
+ * The one rectangle the feet clamp reserves headroom for and the decorations
+ * anchor the kit on: the union of body, head accessory and carried cargo.
+ * Both call sites consume this exact function so they cannot drift apart.
+ */
+export function kitAnchor(
+  body: BodyTransform,
+  head: VisualBounds | null,
+  cargo: VisualBounds | null,
+): VisualBounds {
+  let anchor = bodyBounds(body);
+  if (head) anchor = unionBounds(anchor, head)!;
+  if (cargo) anchor = unionBounds(anchor, cargo)!;
+  return anchor;
+}
+
+/** Placement of the overhead kit: badge above the anchor, star to its right. */
+export interface KitLayout {
+  centreX: number;
+  badgeY: number;
+  starX: number;
+  starY: number;
+  bounds: VisualBounds;
+}
+
+/**
+ * §4.3 overhead kit over the anchor union: the 24×24 badge keeps a 4 px gap
+ * above the union top, the 16×16 super star sits to its right with 4 px. The
+ * returned bounds are the exact drawn kit extent (null when nothing is drawn),
+ * which the clamp also uses as its reserved band.
+ */
+export function kitLayout(anchor: VisualBounds, badge: boolean, star: boolean): KitLayout | null {
+  if (!badge && !star) return null;
+  const centreX = (anchor.left + anchor.right) / 2;
+  const badgeY = anchor.top - OVERHEAD_GAP - BADGE_SIZE / 2;
+  const starX = centreX + BADGE_SIZE / 2 + OVERHEAD_GAP + STAR_SIZE / 2;
+  const badgeRect: VisualBounds | null = badge
+    ? {
+        left: centreX - BADGE_SIZE / 2,
+        top: anchor.top - OVERHEAD_GAP - BADGE_SIZE,
+        right: centreX + BADGE_SIZE / 2,
+        bottom: anchor.top - OVERHEAD_GAP,
+      }
+    : null;
+  const starRect: VisualBounds | null = star
+    ? {
+        left: centreX + BADGE_SIZE / 2 + OVERHEAD_GAP,
+        top: badgeY - STAR_SIZE / 2,
+        right: centreX + BADGE_SIZE / 2 + OVERHEAD_GAP + STAR_SIZE,
+        bottom: badgeY + STAR_SIZE / 2,
+      }
+    : null;
+  const bounds = unionBounds(badgeRect, starRect)!;
+  return { centreX, badgeY, starX, starY: badgeY, bounds };
+}

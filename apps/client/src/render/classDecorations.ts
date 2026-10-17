@@ -2,16 +2,18 @@ import type { Unit } from '@talad/sim';
 import Phaser from 'phaser';
 import type { ArtManifest, ClassArtEntry, HeadFrame } from './anims';
 import {
+  BADGE_SIZE,
+  STAR_SIZE,
   bodyBounds,
   classVisualGeometry,
+  kitAnchor,
+  kitLayout,
   unionBounds,
   type BodyTransform,
+  type KitLayout,
   type VisualBounds,
 } from './classGeometry';
 
-const BADGE_SIZE = 24; // §4.3: logical stage px
-const STAR_SIZE = 16; // §4.3: logical stage px, right of the badge
-const OVERHEAD_GAP = 4;
 const HEAD_DEPTH_OFFSET = 0.2; // §4.3: accessory sits just in front of the body
 const KIT_DEPTH_OFFSET = 3; // above cargo (floor + 2), below screen-space HUD
 
@@ -67,14 +69,26 @@ export class ClassDecorations {
     }
     const entry = unit.classId ? this.art?.classes[unit.classId] : undefined;
     const set = deco ?? this.create(unit.id, body);
-    const drawn = bodyBounds(this.transformOf(body));
-    let union = unionBounds(drawn, cargoBounds);
+    const transform = this.transformOf(body);
+    const frame = entry ? this.headFrame(body, entry) : null;
+    const headVisible = !!entry && !!frame && this.scene.textures.exists(entry.head);
+    // §4.3: the badge/star anchor on the union of body, head accessory and
+    // cargo — the same kitAnchor the view's feet clamp reserves headroom for.
+    const anchor = kitAnchor(
+      transform,
+      headVisible && frame ? classVisualGeometry(transform, frame).bounds : null,
+      cargoBounds,
+    );
     const starVisible = unit.superBuddy === true && this.scene.textures.exists('badge_super');
-    this.placeHead(set, body, entry);
-    this.placeBadge(set, drawn, entry);
-    this.placeStar(set, drawn, starVisible);
-    union = unionBounds(union, this.kitBounds(drawn, entry !== undefined, starVisible));
-    return union;
+    const badgeVisible = !!entry && this.scene.textures.exists(entry.badge);
+    const kit = kitLayout(anchor, badgeVisible, starVisible);
+    // Depth stays on the body bottom so stacking order against other units is
+    // unchanged; only the kit's position and bounds follow the anchor union.
+    const kitDepth = Math.floor(bodyBounds(transform).bottom) + KIT_DEPTH_OFFSET;
+    this.placeHead(set, body, entry, frame, transform);
+    this.placeBadge(set, kit, entry, kitDepth);
+    this.placeStar(set, kit, starVisible, kitDepth);
+    return unionBounds(unionBounds(bodyBounds(transform), cargoBounds), kit ? kit.bounds : null);
   }
 
   /** Remove every sprite and listener; safe to call twice. */
@@ -141,13 +155,14 @@ export class ClassDecorations {
     set: DecorSet,
     body: Phaser.GameObjects.Sprite,
     entry: ClassArtEntry | undefined,
+    frame: HeadFrame | null,
+    transform: BodyTransform,
   ): void {
-    const frame = entry ? this.headFrame(body, entry) : null;
     if (!entry || !frame || !this.scene.textures.exists(entry.head)) {
       set.head.setVisible(false);
       return;
     }
-    const geom = classVisualGeometry(this.transformOf(body), frame);
+    const geom = classVisualGeometry(transform, frame);
     set.head
       .setTexture(entry.head)
       .setPosition(geom.x, geom.y)
@@ -158,47 +173,37 @@ export class ClassDecorations {
       .setVisible(true);
   }
 
-  private placeBadge(set: DecorSet, drawn: VisualBounds, entry: ClassArtEntry | undefined): void {
-    if (!entry || !this.scene.textures.exists(entry.badge)) {
+  private placeBadge(
+    set: DecorSet,
+    kit: KitLayout | null,
+    entry: ClassArtEntry | undefined,
+    depth: number,
+  ): void {
+    if (!kit || !entry || !this.scene.textures.exists(entry.badge)) {
       set.badge.setVisible(false);
       return;
     }
     set.badge
       .setTexture(entry.badge)
-      .setPosition((drawn.left + drawn.right) / 2, drawn.top - OVERHEAD_GAP - BADGE_SIZE / 2)
+      .setPosition(kit.centreX, kit.badgeY)
       .setDisplaySize(BADGE_SIZE, BADGE_SIZE)
       .setOrigin(0.5, 0.5)
-      .setDepth(Math.floor(drawn.bottom) + KIT_DEPTH_OFFSET)
+      .setDepth(depth)
       .setVisible(true);
   }
 
-  private placeStar(set: DecorSet, drawn: VisualBounds, visible: boolean): void {
-    if (!visible) {
+  private placeStar(set: DecorSet, kit: KitLayout | null, visible: boolean, depth: number): void {
+    if (!kit || !visible) {
       set.star.setVisible(false);
       return;
     }
     set.star
       .setTexture('badge_super')
-      .setPosition(
-        (drawn.left + drawn.right) / 2 + BADGE_SIZE / 2 + OVERHEAD_GAP + STAR_SIZE / 2,
-        drawn.top - OVERHEAD_GAP - BADGE_SIZE / 2,
-      )
+      .setPosition(kit.starX, kit.starY)
       .setDisplaySize(STAR_SIZE, STAR_SIZE)
       .setOrigin(0.5, 0.5)
-      .setDepth(Math.floor(drawn.bottom) + KIT_DEPTH_OFFSET)
+      .setDepth(depth)
       .setVisible(true);
-  }
-
-  /** Rectangle of the overhead band that is actually drawn, if any. */
-  private kitBounds(drawn: VisualBounds, badge: boolean, star: boolean): VisualBounds | null {
-    if (!badge && !star) return null;
-    const centreX = (drawn.left + drawn.right) / 2;
-    return {
-      left: centreX - BADGE_SIZE / 2,
-      top: drawn.top - OVERHEAD_GAP - BADGE_SIZE,
-      right: star ? centreX + BADGE_SIZE / 2 + OVERHEAD_GAP + STAR_SIZE : centreX + BADGE_SIZE / 2,
-      bottom: drawn.top - OVERHEAD_GAP,
-    };
   }
 
   private setVisible(set: DecorSet, visible: boolean): void {

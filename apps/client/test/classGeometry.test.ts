@@ -6,6 +6,8 @@ import { expect, it } from 'vitest';
 import {
   bodyBounds,
   classVisualGeometry,
+  kitAnchor,
+  kitLayout,
   unionBounds,
   type BodyTransform,
   type VisualBounds,
@@ -129,14 +131,10 @@ it('computed union with super cargo and overhead kit never top-clips at world y=
           top: cargoBottom - cargoH,
           bottom: cargoBottom,
         };
-        const drawn = unionBounds(unionBounds(bodyBounds(body), headGeom.bounds), cargo)!;
-        // Badge 24 px with a 4 px gap, star 16 px band sharing the badge top.
-        const kit: VisualBounds = {
-          left: 640 - 12 - 8,
-          right: 640 + 12 + 20 + 8,
-          top: drawn.top - 4 - 24,
-          bottom: drawn.top - 4,
-        };
+        const drawn = kitAnchor(body, headGeom.bounds, cargo);
+        // Production kit band: badge 24 px + 4 px gap above the drawn union,
+        // star 16 px beside it — the same helper the decorations draw with.
+        const kit = kitLayout(drawn, true, true)!.bounds;
         const union = unionBounds(drawn, kit)!;
         const delta = Math.max(0, required - union.top);
         expect(Number.isFinite(delta), `${skin}#${frame} ${cls}`).toBe(true);
@@ -148,6 +146,57 @@ it('computed union with super cargo and overhead kit never top-clips at world y=
       }
     }
   }
+});
+
+it('overhead kit bottom clears body, head accessory and cargo by the 4 px gap', () => {
+  // Review round 1: the badge used to anchor on the body top alone, landing on
+  // top of the carried crate. §4.3: the kit anchor is the union of body, head
+  // accessory and cargo, and the kit keeps a 4 px gap above that union.
+  const crateArt: Record<'normal' | 'super', { width: number; height: number }> = {
+    normal: manifest.props.crate,
+    super: manifest.props.crate_super,
+  };
+  for (const cls of ['boxer', 'healer', 'ninja', 'giant'] as const) {
+    const displayHeight = 92 * manifest.classArt.classes[cls].bodyScale;
+    for (const kind of ['normal', 'super'] as const) {
+      const body: BodyTransform = {
+        x: 640,
+        y: 300,
+        width: displayHeight,
+        height: displayHeight,
+        originX: 0.5,
+        originY: 0.984375,
+        flipX: false,
+      };
+      const headBounds = classVisualGeometry(
+        body,
+        manifest.classArt.headFrames.fruit_mangosteen[0]!,
+      ).bounds;
+      // Carried crates draw 1.8 stage cells wide (view.ts carriedCargoBounds).
+      const cargoW = 54;
+      const cargoBottom = body.y - (207 / 256) * displayHeight;
+      const cargo: VisualBounds = {
+        left: 640 - cargoW / 2,
+        right: 640 + cargoW / 2,
+        top: cargoBottom - (cargoW * crateArt[kind].height) / crateArt[kind].width,
+        bottom: cargoBottom,
+      };
+      const anchor = kitAnchor(body, headBounds, cargo);
+      const kit = kitLayout(anchor, true, true)!;
+      const minTop = Math.min(bodyBounds(body).top, headBounds.top, cargo.top);
+      expect(kit.bounds.bottom, `${cls} ${kind}`).toBeLessThanOrEqual(minTop - 4 + 1e-9);
+      expect(kit.bounds.bottom, `${cls} ${kind} overlaps anchor`).toBeLessThanOrEqual(
+        anchor.top + 1e-9,
+      );
+      // Star-only kits (classless super) reserve their own drawn extent too.
+      const starKit = kitLayout(anchor, false, true)!;
+      expect(starKit.bounds.bottom, `${cls} ${kind} star-only`).toBeLessThanOrEqual(
+        anchor.top + 1e-9,
+      );
+    }
+  }
+  // No kit, no band.
+  expect(kitLayout(bodyBounds(REST), false, false)).toBeNull();
 });
 
 it('delivers 8x18 finite landmarks for every skin, including the KO frame', () => {
