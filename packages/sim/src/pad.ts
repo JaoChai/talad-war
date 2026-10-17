@@ -3,7 +3,7 @@ import { pointInRect } from './geometry';
 import { padRect } from './map';
 import type { CrateId, MatchState, Pad, Team, UnitId, Vec2 } from './types';
 
-export type Recipe = 'gun' | 'bombs' | 'buddy' | 'heavy';
+export type Recipe = 'gun' | 'bombs' | 'buddy' | 'heavy' | 'class';
 
 export type Preview =
   | { recipe: Recipe; super: boolean; openable: true }

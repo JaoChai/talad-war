@@ -399,17 +399,18 @@ describe('R1 bot decisions and natural traffic', () => {
   });
 
   it('six_natural_seeds_open_all_four_recipes_and_super', () => {
-    const total: Record<Recipe, number> = { gun: 0, bombs: 0, buddy: 0, heavy: 0 };
+    const total: Record<Recipe, number> = { gun: 0, bombs: 0, buddy: 0, heavy: 0, class: 0 };
     let supers = 0;
     for (let seed = 1; seed <= 6; seed++) {
       let s = createMatch(seed, { humanUnit: null });
-      const counts = { gun: 0, bombs: 0, buddy: 0, heavy: 0 };
+      const counts: Record<Recipe, number> = { gun: 0, bombs: 0, buddy: 0, heavy: 0, class: 0 };
       const quality = { normal: 0, super: 0 };
       const byRecipeQuality: Record<Recipe, { normal: number; super: number }> = {
         gun: { normal: 0, super: 0 },
         bombs: { normal: 0, super: 0 },
         buddy: { normal: 0, super: 0 },
         heavy: { normal: 0, super: 0 },
+        class: { normal: 0, super: 0 },
       };
       while (s.winner === null && s.tick < 18000) {
         s = step(s, new Map());
@@ -431,7 +432,9 @@ describe('R1 bot decisions and natural traffic', () => {
       expect(s.winner).not.toBeNull();
     }
     console.log(JSON.stringify({ total, supers }));
-    for (const count of Object.values(total)) expect(count).toBeGreaterThanOrEqual(1);
+    // This R1 oracle retains all four natural-use requirements; R2-6 owns class use.
+    for (const recipe of ['gun', 'bombs', 'buddy', 'heavy'] as const)
+      expect(total[recipe]).toBeGreaterThanOrEqual(1);
     expect(supers).toBeGreaterThanOrEqual(1);
   }, 120_000);
 });

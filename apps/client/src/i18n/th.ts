@@ -4,7 +4,7 @@
  * this table or the helpers below (test/i18n.test.ts pins the coverage).
  * `preview_empty` maps to '' on purpose — an empty pad hides the preview.
  */
-import type { ItemId, Recipe } from '@talad/sim';
+import type { ItemId, Recipe, UnitClass } from '@talad/sim';
 
 export const th = {
   gameName: 'ตลาดวอร์',
@@ -21,7 +21,7 @@ export const th = {
   howtoMoveBody: 'ลากจอยเพื่อเดิน หรือใช้ WASD กด หยิบ/วาง หรือ E เพื่อขนลังไปที่แท่นของทีม',
   howtoBuild: 'เรียงลัง แล้วกด เปิด!',
   howtoBuildBody:
-    'บนแท่นของทีม: 1 ลังได้ปืน • 2 ลังข้างกันได้ระเบิด • 2 ลังซ้อนกันได้ลูกทีม • 4 ลังเต็มพื้นได้บาซูก้ามะพร้าว • ลังดาวทำให้ของพิเศษ',
+    'บนแท่นของทีม: 1 ลังได้ปืน • 2 ลังข้างกันได้ระเบิด • 2 ลังซ้อนกันได้ลูกทีม • 4 ลังเต็มพื้นได้บาซูก้ามะพร้าว • 2 เสาซ้อนคู่ได้ลูกทีมอาชีพ เลือกด้วยปุ่มหรือ 1–4 • ลังดาวทำให้ของพิเศษ',
   howtoWin: 'ถล่มแผงอีกฝั่งให้พัง!',
   howtoWinBody: 'กด ยิง หรือคลิกเมาส์เพื่อโจมตี ชวนลูกทีมบุก ทำลายแผงศัตรูเพื่อชนะ',
   fruitTeam: 'ทีมผลไม้',
@@ -44,6 +44,16 @@ export const th = {
   recipeBombs: 'ระเบิด',
   recipeBuddy: 'ลูกทีม',
   recipeHeavy: 'บาซูก้ามะพร้าว',
+  recipeClass: 'ลูกทีมอาชีพ',
+  classBoxer: 'นักมวย',
+  classHealer: 'หมอยา',
+  classNinja: 'นินจา',
+  classGiant: 'ยักษ์',
+  chooseClass: 'เลือกอาชีพ',
+  classOpening: 'กำลังสร้างลูกทีม…',
+  switchUnit: 'สลับตัว',
+  switchUnavailable: 'ไม่มีลูกทีมที่สลับได้',
+  controlledUnit: 'ตัวที่ควบคุม',
   itemUnarmed: 'มือเปล่า',
   itemCrate: 'ลัง',
   preview_notRecipe: 'ยังไม่ใช่สูตร',
@@ -71,7 +81,19 @@ const recipeNames: Record<Recipe, string> = {
   bombs: th.recipeBombs,
   buddy: th.recipeBuddy,
   heavy: th.recipeHeavy,
+  class: th.recipeClass,
 };
+
+const classNames: Record<UnitClass, string> = {
+  boxer: th.classBoxer,
+  healer: th.classHealer,
+  ninja: th.classNinja,
+  giant: th.classGiant,
+};
+
+export function className(classId: UnitClass): string {
+  return classNames[classId];
+}
 
 const itemNames: Record<ItemId, string> = {
   unarmed: th.itemUnarmed,

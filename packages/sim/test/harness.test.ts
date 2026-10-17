@@ -17,12 +17,16 @@ import {
   SUPER_BUDDY_MAX_HP,
   updateOpens,
 } from '../src/index';
-import type { ItemBan, Recipe, Team, UnitInput } from '../src/index';
+import type { ItemBan, Recipe, Team, UnitClass, UnitInput } from '../src/index';
 
 const teams = ['fruit', 'dessert'] as const;
-const recipes = ['gun', 'bombs', 'buddy', 'heavy'] as const;
+const r1Recipes = ['gun', 'bombs', 'buddy', 'heavy'] as const;
+const recipes = [...r1Recipes, 'class'] as const;
+const classes = ['boxer', 'healer', 'ninja', 'giant'] as const;
+const banItems = ['heavy', 'super', 'class', ...classes] as const;
 const sources = ['slap', 'gun', 'bombs', 'heavy'] as const;
-const counts = () => ({ gun: 0, bombs: 0, buddy: 0, heavy: 0 });
+const counts = () => ({ gun: 0, bombs: 0, buddy: 0, heavy: 0, class: 0 });
+const classCounts = () => ({ boxer: 0, healer: 0, ninja: 0, giant: 0 });
 const damage = () => ({ slap: 0, gun: 0, bombs: 0, heavy: 0 });
 const IN_BAND: BatchResult = {
   games: 1000,
@@ -34,6 +38,7 @@ const IN_BAND: BatchResult = {
   msPerTick: 0.4,
   opens: { fruit: counts(), dessert: counts() },
   superOpens: { fruit: 0, dessert: 0 },
+  classPicks: { fruit: classCounts(), dessert: classCounts() },
   stallDamage: { fruit: damage(), dessert: damage() },
 };
 const OUT_OF_BAND: BatchResult = {
@@ -58,6 +63,7 @@ const idle: UnitInput = {
 function observe(opts: BatchOpts) {
   const opens = { fruit: counts(), dessert: counts() };
   const superOpens = { fruit: 0, dessert: 0 };
+  const classPicks = { fruit: classCounts(), dessert: classCounts() };
   const stallDamage = { fruit: damage(), dessert: damage() };
   const wins = { fruit: 0, dessert: 0 };
   let draws = 0;
@@ -72,6 +78,10 @@ function observe(opts: BatchOpts) {
           expect(teams).toContain(e.team);
           expect(recipes).toContain(e.recipe);
           opens[e.team as Team][e.recipe as Recipe]++;
+          if (e.recipe === 'class') {
+            expect(classes).toContain(e.classId);
+            classPicks[e.team as Team][e.classId as UnitClass]++;
+          }
           if (e.super === true) superOpens[e.team as Team]++;
         }
         if (e.kind === 'hit' && (e.target === 'fruit' || e.target === 'dessert')) {
@@ -91,6 +101,7 @@ function observe(opts: BatchOpts) {
   return {
     opens,
     superOpens,
+    classPicks,
     stallDamage,
     draws,
     timeouts,
@@ -99,6 +110,20 @@ function observe(opts: BatchOpts) {
 }
 
 describe('runBatch', () => {
+  it('initializes every recipe and class count to finite zero without completed opens', () => {
+    const r = runBatch({ games: 1, seed0: 1, maxMinutes: 0.001 });
+    expect(r.opens).toEqual(IN_BAND.opens);
+    expect(r.classPicks).toEqual({
+      fruit: { boxer: 0, healer: 0, ninja: 0, giant: 0 },
+      dessert: { boxer: 0, healer: 0, ninja: 0, giant: 0 },
+    });
+    for (const team of teams) {
+      expect(Object.keys(r.opens[team]).sort()).toEqual([...recipes].sort());
+      for (const value of Object.values(r.opens[team])) expect(Number.isFinite(value)).toBe(true);
+      for (const value of Object.values(r.classPicks[team]))
+        expect(Number.isFinite(value)).toBe(true);
+    }
+  });
   it('runs the requested number of all-bot games', () => {
     expect(runBatch({ games: 5, seed0: 1, maxMinutes: 15 }).games).toBe(5);
   }, 30_000);
@@ -138,7 +163,7 @@ describe('runBatch', () => {
     const opts = { games: 3, seed0: 1, maxMinutes: 15 };
     const expected = observe(opts);
     expect(runBatch(opts)).toMatchObject(expected);
-    for (const recipe of recipes)
+    for (const recipe of r1Recipes)
       expect(expected.opens.fruit[recipe] + expected.opens.dessert[recipe]).toBeGreaterThan(0);
     for (const source of sources)
       expect(
@@ -235,7 +260,7 @@ describe('CLI ban validation', () => {
     expect(r.status, r.stderr).toBe(0);
     expect(JSON.parse(r.stdout)).toMatchObject({ games: 1, timeouts: 1 });
   });
-  it.each(teams.flatMap((team) => (['heavy', 'super'] as const).map((item) => [team, item])))(
+  it.each(teams.flatMap((team) => banItems.map((item) => [team, item])))(
     'accepts paired --ban-team %s --ban-item %s',
     (team, item) => {
       const r = cli(['--ban-team', team!, '--ban-item', item!]);
@@ -253,6 +278,11 @@ describe('CLI ban validation', () => {
     ['--ban-team', 'fruit', '--ban-item', 'gun'],
     ['--ban-team', 'fruit', '--ban-item'],
     ['--ban-item', 'super', '--ban-team'],
+    ['--ban-item', 'class'],
+    ['--ban-item', 'boxer'],
+    ['--ban-team', 'dessert', '--ban-item', 'mage'],
+    ['--ban-team', 'fruit', '--ban-item', 'Boxer'],
+    ['--ban-team', 'fruit', '--ban-item', 'class,boxer'],
   ])('rejects partial/unknown ban arguments %j', (...args) => {
     const r = cli(args);
     expect(r.status).toBe(1);
@@ -262,7 +292,7 @@ describe('CLI ban validation', () => {
 });
 
 /** Legal super pad, direct open channel; no bot or combat interference. */
-function recipeArena(team: Team, recipe: Recipe, item: ItemBan) {
+function recipeArena(team: Team, recipe: (typeof r1Recipes)[number], item: ItemBan) {
   const s = createMatch(1, { humanUnit: null });
   for (const u of s.units) u.isBot = false;
   s.itemBans = { [team]: [item] };
@@ -328,7 +358,7 @@ describe('ban policy uses existing rule resolver, not deleted/recoloured crates'
       1,
     );
   });
-  it.each(teams.flatMap((team) => recipes.map((recipe) => ({ team, recipe }))))(
+  it.each(teams.flatMap((team) => r1Recipes.map((recipe) => ({ team, recipe }))))(
     'super $recipe resolves normal only for $team',
     ({ team, recipe }) => {
       const s = recipeArena(team, recipe, 'super');

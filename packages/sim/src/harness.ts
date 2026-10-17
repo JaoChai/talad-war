@@ -1,8 +1,8 @@
 /** CLI harness: the only node-facing entry of the sim package (node builtins + perf timing allowed here only). */
 import { pathToFileURL } from 'node:url';
-import { TICK_HZ, createMatch, step } from './index';
+import { CLASS_IDS, TICK_HZ, createMatch, step } from './index';
 import type { Recipe } from './pad';
-import type { ItemBan, Team } from './types';
+import type { ItemBan, Team, UnitClass } from './types';
 
 export interface BatchOpts {
   games: number;
@@ -21,6 +21,8 @@ export interface BatchResult {
   timeouts: number;
   msPerTick: number;
   opens: Record<Team, Record<Recipe, number>>;
+  /** Completed class recruits only; started/cancelled channels do not count. */
+  classPicks: Record<Team, Record<UnitClass, number>>;
   superOpens: Record<Team, number>;
   /** Damage credited to the attacking team, including overkill as emitted by hit events. */
   stallDamage: Record<Team, Record<'slap' | 'gun' | 'bombs' | 'heavy', number>>;
@@ -61,8 +63,12 @@ export function runBatch(opts: BatchOpts): BatchResult {
   const maxTicks = Math.max(1, Math.floor(opts.maxMinutes * 60 * TICK_HZ));
   const wins: Record<Team, number> = { fruit: 0, dessert: 0 };
   const opens: BatchResult['opens'] = {
-    fruit: { gun: 0, bombs: 0, buddy: 0, heavy: 0 },
-    dessert: { gun: 0, bombs: 0, buddy: 0, heavy: 0 },
+    fruit: { gun: 0, bombs: 0, buddy: 0, heavy: 0, class: 0 },
+    dessert: { gun: 0, bombs: 0, buddy: 0, heavy: 0, class: 0 },
+  };
+  const classPicks: BatchResult['classPicks'] = {
+    fruit: { boxer: 0, healer: 0, ninja: 0, giant: 0 },
+    dessert: { boxer: 0, healer: 0, ninja: 0, giant: 0 },
   };
   const superOpens: BatchResult['superOpens'] = { fruit: 0, dessert: 0 };
   const stallDamage: BatchResult['stallDamage'] = {
@@ -86,10 +92,16 @@ export function runBatch(opts: BatchOpts): BatchResult {
             e.recipe !== 'gun' &&
             e.recipe !== 'bombs' &&
             e.recipe !== 'buddy' &&
-            e.recipe !== 'heavy'
+            e.recipe !== 'heavy' &&
+            e.recipe !== 'class'
           )
             throw new Error(`Unknown opened recipe: ${String(e.recipe)}`);
           opens[e.team][e.recipe]++;
+          if (e.recipe === 'class') {
+            if (!CLASS_IDS.some((id) => id === e.classId))
+              throw new Error(`Unknown opened class: ${String(e.classId)}`);
+            classPicks[e.team][e.classId as UnitClass]++;
+          }
           if (e.super === true) superOpens[e.team]++;
         }
         if (e.kind === 'hit' && (e.target === 'fruit' || e.target === 'dessert')) {
@@ -125,6 +137,7 @@ export function runBatch(opts: BatchOpts): BatchResult {
     timeouts,
     msPerTick,
     opens,
+    classPicks,
     superOpens,
     stallDamage,
   };
@@ -176,10 +189,15 @@ function parseArgs(argv: string[]): CliArgs {
       teamIndex < 0 ||
       itemIndex < 0 ||
       (team !== 'fruit' && team !== 'dessert') ||
-      (item !== 'heavy' && item !== 'super')
+      (item !== 'heavy' &&
+        item !== 'super' &&
+        item !== 'class' &&
+        !CLASS_IDS.some((id) => id === item))
     )
-      throw new Error('Use paired --ban-team fruit|dessert --ban-item heavy|super');
-    ban = { team, item };
+      throw new Error(
+        'Use paired --ban-team fruit|dessert --ban-item heavy|super|class|boxer|healer|ninja|giant',
+      );
+    ban = { team, item: item as ItemBan };
   }
   const flag = (name: string, def: number): number => {
     const i = argv.indexOf(`--${name}`);

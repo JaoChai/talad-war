@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ItemId, Preview, Recipe, SquadCommand } from '@talad/sim';
-import { commandName, itemName, qualityName, recipeName, t, th } from '../src/i18n/th';
+import { CLASS_IDS } from '@talad/sim';
+import { className, commandName, itemName, qualityName, recipeName, t, th } from '../src/i18n/th';
 
 /**
  * Enumerated from the sim unions, not a hand list: the `satisfies` clauses pin
@@ -8,7 +9,7 @@ import { commandName, itemName, qualityName, recipeName, t, th } from '../src/i1
  * exhaustiveness check — if the sim gains a recipe/reason/command, typecheck
  * fails here until the row is translated.
  */
-const RECIPES = ['gun', 'bombs', 'buddy', 'heavy'] as const satisfies readonly Recipe[];
+const RECIPES = ['gun', 'bombs', 'buddy', 'heavy', 'class'] as const satisfies readonly Recipe[];
 const ITEMS = ['unarmed', 'gun', 'heavy', 'bombs', 'crate'] as const satisfies readonly ItemId[];
 const REASONS = ['notRecipe', 'teamFull', 'empty'] as const satisfies readonly PreviewReason[];
 const COMMANDS = ['attack', 'guard', 'fetch'] as const satisfies readonly NonNullCommand[];
@@ -21,7 +22,13 @@ const THAI = /[\u0E00-\u0E7F]/;
 
 describe('i18n coverage of sim unions', () => {
   it('maps every Recipe to a non-empty Thai string', () => {
-    const exhaustive: Record<Recipe, true> = { gun: true, bombs: true, buddy: true, heavy: true };
+    const exhaustive: Record<Recipe, true> = {
+      gun: true,
+      bombs: true,
+      buddy: true,
+      heavy: true,
+      class: true,
+    };
     expect(Object.keys(exhaustive).length).toBe(RECIPES.length);
     for (const recipe of RECIPES) {
       const name = recipeName(recipe);
@@ -37,6 +44,7 @@ describe('i18n coverage of sim unions', () => {
       bombs: 'ระเบิด',
       buddy: 'ลูกทีม',
       heavy: 'บาซูก้ามะพร้าว',
+      class: 'ลูกทีมอาชีพ',
     };
     const itemLabels: Record<ItemId, string> = {
       unarmed: 'มือเปล่า',
@@ -58,7 +66,42 @@ describe('i18n coverage of sim unions', () => {
       expect(qualityName(itemName(item), true)).toBe(`${itemLabels[item]} พิเศษ`);
     }
     expect(th.howtoBuildBody).toBe(
-      'บนแท่นของทีม: 1 ลังได้ปืน • 2 ลังข้างกันได้ระเบิด • 2 ลังซ้อนกันได้ลูกทีม • 4 ลังเต็มพื้นได้บาซูก้ามะพร้าว • ลังดาวทำให้ของพิเศษ',
+      'บนแท่นของทีม: 1 ลังได้ปืน • 2 ลังข้างกันได้ระเบิด • 2 ลังซ้อนกันได้ลูกทีม • 4 ลังเต็มพื้นได้บาซูก้ามะพร้าว • 2 เสาซ้อนคู่ได้ลูกทีมอาชีพ เลือกด้วยปุ่มหรือ 1–4 • ลังดาวทำให้ของพิเศษ',
+    );
+  });
+
+  it('labels every class and its quality with the approved Thai identity', () => {
+    expect(recipeName('class')).toBe('ลูกทีมอาชีพ');
+    expect(CLASS_IDS.map(className)).toEqual(['นักมวย', 'หมอยา', 'นินจา', 'ยักษ์']);
+    expect(CLASS_IDS.map((id) => qualityName(className(id), false))).toEqual([
+      'นักมวย',
+      'หมอยา',
+      'นินจา',
+      'ยักษ์',
+    ]);
+    expect(CLASS_IDS.map((id) => qualityName(className(id), true))).toEqual([
+      'นักมวย พิเศษ',
+      'หมอยา พิเศษ',
+      'นินจา พิเศษ',
+      'ยักษ์ พิเศษ',
+    ]);
+  });
+
+  it('provides exact class and control state copy without choosing a switch key', () => {
+    expect(th).toMatchObject({
+      recipeClass: 'ลูกทีมอาชีพ',
+      classBoxer: 'นักมวย',
+      classHealer: 'หมอยา',
+      classNinja: 'นินจา',
+      classGiant: 'ยักษ์',
+      chooseClass: 'เลือกอาชีพ',
+      classOpening: 'กำลังสร้างลูกทีม…',
+      switchUnit: 'สลับตัว',
+      switchUnavailable: 'ไม่มีลูกทีมที่สลับได้',
+      controlledUnit: 'ตัวที่ควบคุม',
+    });
+    expect(th.howtoWinBody).toBe(
+      'กด ยิง หรือคลิกเมาส์เพื่อโจมตี ชวนลูกทีมบุก ทำลายแผงศัตรูเพื่อชนะ',
     );
   });
 
