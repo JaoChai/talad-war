@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CLASS_IDS, OPEN_TICKS, createMatch, padCellCenter, switchControl } from '@talad/sim';
+import { CLASS_IDS, OPEN_TICKS, createMatch, padCellCenter, step, switchControl } from '@talad/sim';
 import type { MatchState } from '@talad/sim';
 import { R2Controls, classPickContext } from '../src/input/r2Controls';
 import type { ClassPickContext } from '../src/input/r2Controls';
@@ -360,6 +360,67 @@ describe('R2 class/switch controls', () => {
     touch.resetForHandoff();
     touch.destroy();
     mount.remove();
+  });
+
+  it('digit_pick_through_real_sim_starts_the_class_channel', () => {
+    // Plan §2.2: the pick input shape is open:true + classPick — the sim only
+    // starts a channel when input.open && canStartOpen (sim step.ts:98,135).
+    const s = createMatch(1);
+    for (const u of s.units) u.isBot = false; // scripted real inputs, no bot overrides
+    layoutClassWall(s, [0, 1]);
+    standOnWall(s);
+    const ctx = wallContext(s);
+    const kb = new KeyboardInput();
+    kb.handleKey('Digit2', true, ctx); // Digit2 = healer (CLASS_IDS order)
+    const next = step(s, new Map([[0, kb.read(s, 0)]]));
+    expect(next.pads.fruit.opening?.classId).toBe('healer');
+    expect(next.pads.fruit.opening?.doneTick).toBe(s.tick + 1 + OPEN_TICKS);
+    expect(next.pads.fruit.opening?.snapshot).toBe(ctx.snapshot);
+  });
+
+  it('tray_pick_through_real_sim_starts_the_class_channel', () => {
+    // R2Controls.read must carry open:true with a validated pick so the scene
+    // merge {...keyboard, ...tray} opens without a second sim API.
+    const s = createMatch(1);
+    for (const u of s.units) u.isBot = false;
+    layoutClassWall(s, [0, 1]);
+    standOnWall(s);
+    const ctx = wallContext(s);
+    const controls = new R2Controls();
+    controls.queuePick(ctx, 'ninja');
+    const merged = { ...new KeyboardInput().read(s, 0), ...controls.read(s) };
+    const next = step(s, new Map([[0, merged]]));
+    expect(next.pads.fruit.opening?.classId).toBe('ninja');
+    expect(next.pads.fruit.opening?.doneTick).toBe(s.tick + 1 + OPEN_TICKS);
+    expect(next.pads.fruit.opening?.snapshot).toBe(ctx.snapshot);
+  });
+
+  it('stale_pick_through_real_sim_leaves_opening_null', () => {
+    // Keyboard: the wall changed after Digit2 was cached — the pick is consumed
+    // and the step must not open anything.
+    const s = createMatch(1);
+    for (const u of s.units) u.isBot = false;
+    layoutClassWall(s, [0, 1]);
+    standOnWall(s);
+    const ctx = wallContext(s);
+    const kb = new KeyboardInput();
+    kb.handleKey('Digit2', true, ctx);
+    s.pads.fruit.cells[1]![1] = null; // displayed snapshot no longer matches
+    const nextKb = step(s, new Map([[0, kb.read(s, 0)]]));
+    expect(nextKb.pads.fruit.opening).toBeNull();
+
+    // Tray: same staleness contract through the merged read.
+    const s2 = createMatch(1);
+    for (const u of s2.units) u.isBot = false;
+    layoutClassWall(s2, [0, 1]);
+    standOnWall(s2);
+    const ctx2 = wallContext(s2);
+    const controls = new R2Controls();
+    controls.queuePick(ctx2, 'ninja');
+    s2.pads.fruit.cells[0]![0] = null; // displayed snapshot no longer matches
+    const merged = { ...new KeyboardInput().read(s2, 0), ...controls.read(s2) };
+    const nextTray = step(s2, new Map([[0, merged]]));
+    expect(nextTray.pads.fruit.opening).toBeNull();
   });
 
   it('failed_icon_keeps_Thai_button_name', () => {
