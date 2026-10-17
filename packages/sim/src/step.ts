@@ -1,5 +1,6 @@
 import { ARENA_H, ARENA_W, DT, UNIT_RADIUS } from './constants';
 import { updateClassHealing } from './classes';
+import { controlledUnit, switchControl } from './control';
 import { unitMoveSpeed } from './items';
 import { botInput } from './bots/brain';
 import { updateProjectiles, processAttacks, updateRespawns, updateWinner } from './combat';
@@ -13,6 +14,7 @@ import type { MatchState, Pad, SquadCommand, Team, Unit, UnitInput, UnitId, Vec2
 /**
  * Fixed per-tick phase order — do not reorder; later tasks fill their phase in place:
  *   1. commands      (Task 5: apply squad commands)
+ *  1b. control       (R2: handoff before bot authoring; both bodies idle)
  *   2. bot inputs    (Task 5: bots author UnitInputs)
  *   3. movement      (this card)
  *   4. pick/drop     (this card)
@@ -56,12 +58,25 @@ export function step(
     if (commands.dessert !== undefined) next.commands.dessert = commands.dessert;
   }
 
-  // Phase 2: bot inputs — every living isBot unit is driven by botInput on the
-  // post-command state, overriding anything passed in for that unit; the human
-  // unit's input is never overridden.
+  // Phase 1b: accept only the current owner's pulse, once. Never carry either
+  // body's pre-buffered actions into a handoff or author the released bot yet.
   const effective = new Map(inputs);
+  const handoffIdle = new Set<UnitId>();
+  const source = controlledUnit(next);
+  if (source !== null && inputs.get(source.id)?.switchNext) {
+    const targetId = switchControl(next, source.id);
+    if (targetId !== null) {
+      for (const id of [source.id, targetId]) {
+        handoffIdle.add(id);
+        effective.set(id, IDLE_INPUT);
+      }
+    }
+  }
+
+  // Phase 2: ordinary living bots author inputs on the post-command/control
+  // state; a successful handoff's two bodies remain idle until the next tick.
   for (const unit of next.units) {
-    if (!unit.isBot || unitDead(unit)) continue;
+    if (!unit.isBot || unitDead(unit) || handoffIdle.has(unit.id)) continue;
     effective.set(unit.id, botInput(next, unit.id));
   }
 
