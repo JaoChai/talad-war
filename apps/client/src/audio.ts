@@ -38,7 +38,7 @@ export function sfxForTick(prev: MatchState | null, cur: MatchState): SfxKey[] {
   }
   const oldIds = new Set(prev?.projectiles.map((p) => p.id));
   for (const p of cur.projectiles) {
-    if (!oldIds.has(p.id)) add(p.kind === 'bullet' ? 'fire' : 'throw');
+    if (!oldIds.has(p.id)) add(p.kind === 'bomb' ? 'throw' : 'fire');
   }
   return sounds;
 }

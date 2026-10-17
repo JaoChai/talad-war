@@ -3,11 +3,16 @@ import { pointInRect } from './geometry';
 import { padRect } from './map';
 import type { CrateId, MatchState, Pad, Team, UnitId, Vec2 } from './types';
 
-export type Recipe = 'gun' | 'bombs' | 'buddy';
+export type Recipe = 'gun' | 'bombs' | 'buddy' | 'heavy';
 
 export type Preview =
-  | { recipe: Recipe; openable: true }
-  | { recipe: Recipe | null; openable: false; reason: 'notRecipe' | 'teamFull' | 'empty' };
+  | { recipe: Recipe; super: boolean; openable: true }
+  | {
+      recipe: Recipe | null;
+      super: boolean;
+      openable: false;
+      reason: 'notRecipe' | 'teamFull' | 'empty';
+    };
 
 /**
  * Floor cell under pos: col 0..3 (2x2 floor read as col = cellX + PAD_FLOOR * cellY)
@@ -60,7 +65,8 @@ export function liftTop(pad: Pad, col: number): CrateId | null {
 
 /**
  * v1 recipes, exact shapes only: 1 crate anywhere -> gun; 2 ground crates in
- * adjacent cols -> bombs; one column with both layers -> buddy. Anything else -> null.
+ * adjacent cols -> bombs; one column with both layers -> buddy. R1 adds exactly
+ * four ground crates with every upper cell empty -> heavy. Anything else -> null.
  */
 export function matchRecipe(pad: Pad): Recipe | null {
   let count = 0;
@@ -79,6 +85,7 @@ export function matchRecipe(pad: Pad): Recipe | null {
     }
   }
   if (count === 1) return 'gun';
+  if (count === 4 && groundCols.length === 4) return 'heavy';
   if (count === 2) {
     if (stackedCol !== null) return 'buddy'; // ground + upper in one column
     const a = groundCols[0] ?? -1;
@@ -94,17 +101,30 @@ function areAdjacent(a: number, b: number): boolean {
   return dx + dy === 1;
 }
 
+/** Resolve shape, team bans and quality before any recipe consumes its crates. */
+export function recipeResult(s: MatchState, team: Team): { recipe: Recipe; super: boolean } | null {
+  const pad = s.pads[team];
+  const recipe = matchRecipe(pad);
+  const bans = s.itemBans?.[team];
+  if (recipe === null || (recipe === 'heavy' && bans?.includes('heavy'))) return null;
+  const ids = new Set(pad.cells.flat());
+  const quality =
+    !bans?.includes('super') && s.crates.some((c) => ids.has(c.id) && c.kind === 'super');
+  return { recipe, super: quality };
+}
+
 /** What Open! would give on this team's pad right now — the client renders this. */
 export function padPreview(s: MatchState, team: Team): Preview {
   const pad = s.pads[team];
-  if (countCrates(pad) === 0) return { openable: false, reason: 'empty', recipe: null };
-  const recipe = matchRecipe(pad);
-  if (recipe === null) return { openable: false, reason: 'notRecipe', recipe: null };
-  if (recipe === 'buddy') {
+  if (countCrates(pad) === 0)
+    return { openable: false, reason: 'empty', recipe: null, super: false };
+  const result = recipeResult(s, team);
+  if (result === null) return { openable: false, reason: 'notRecipe', recipe: null, super: false };
+  if (result.recipe === 'buddy') {
     const teamSize = s.units.filter((u) => u.team === team).length; // alive + dead
-    if (teamSize >= TEAM_CAP) return { recipe, openable: false, reason: 'teamFull' };
+    if (teamSize >= TEAM_CAP) return { ...result, openable: false, reason: 'teamFull' };
   }
-  return { recipe, openable: true };
+  return { ...result, openable: true };
 }
 
 function countCrates(pad: Pad): number {

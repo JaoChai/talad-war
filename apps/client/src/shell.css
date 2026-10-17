@@ -26,6 +26,24 @@ body {
   font-family: 'Noto Sans Thai', sans-serif;
 }
 
+.tw-screen-hud {
+  --tw-r1-ink: #1b1030;
+  --tw-r1-text: #fff;
+  --tw-r1-super: #ff3fa4;
+  --tw-r1-panel: rgba(27, 16, 48, 0.85);
+  --tw-r1-space-1: 4px;
+  --tw-r1-space-2: 8px;
+  --tw-r1-space-3: 12px;
+  --tw-r1-radius: 10px;
+  --tw-r1-font: 'Noto Sans Thai', Tahoma, sans-serif;
+  --tw-r1-size: 16px;
+  --tw-r1-line: 22px;
+  --tw-r1-weight: 700;
+  --tw-item-panel: var(--tw-r1-panel);
+  --tw-item-text: var(--tw-r1-text);
+  --tw-item-gap: var(--tw-r1-space-2);
+}
+
 .tw-screen-hud button,
 .tw-hud-root > * {
   pointer-events: auto;
@@ -270,22 +288,91 @@ body {
 
 /* --- Pad preview + winner banner (unchanged classes) ---------------------- */
 
+.tw-preview,
+.tw-loadout {
+  box-sizing: border-box;
+  border-radius: var(--tw-r1-radius);
+  background: var(--tw-item-panel);
+  color: var(--tw-item-text);
+  font-family: var(--tw-r1-font);
+  font-size: var(--tw-r1-size);
+  line-height: var(--tw-r1-line);
+  font-weight: var(--tw-r1-weight);
+  pointer-events: none;
+}
+
 .tw-preview {
   position: fixed;
   transform: translate(-50%, -120%);
-  padding: 4px 12px;
-  border-radius: 10px;
-  background: rgba(27, 16, 48, 0.8);
+  padding: var(--tw-r1-space-1) var(--tw-r1-space-3);
+  max-width: calc(100vw - 16px);
+  width: max-content;
   border: 1px solid rgba(255, 255, 255, 0.35);
-  color: #fff;
-  font-size: 16px;
-  white-space: nowrap;
-  pointer-events: none;
   z-index: 11;
 }
 
-.tw-preview[hidden] {
+.tw-loadout {
+  position: absolute;
+  top: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 208px);
+  padding: var(--tw-r1-space-1) var(--tw-r1-space-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--tw-item-gap);
+  width: max-content;
+}
+
+.tw-item-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tw-r1-space-1);
+  max-width: 100%;
+}
+
+.tw-item-bombs {
+  border-left: 1px solid var(--tw-r1-text);
+  padding-left: var(--tw-r1-space-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.tw-item-star {
+  width: 20px;
+  height: 20px;
+}
+
+.tw-item-coconut {
+  width: 24px;
+  height: 24px;
+}
+
+.tw-item-label img {
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.tw-preview[hidden],
+.tw-loadout[hidden],
+.tw-item-label img[hidden] {
   display: none;
+}
+
+@media (max-width: 932px) {
+  /* Keep the panel in the gap between the mirrored HP bars at top:32px.
+     Track width + icon/gap/border/inset + 4px clearance on each side.
+     The max-width contract remains a cap; long labels may wrap within it. */
+  .tw-loadout {
+    flex-direction: column;
+    width: min(240px, calc(100vw - 2 * (min(28vw, 220px) + 66px)));
+  }
+
+  .tw-item-bombs {
+    border-left: 0;
+    padding-left: 0;
+  }
 }
 
 .tw-winner {

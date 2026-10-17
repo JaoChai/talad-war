@@ -1,4 +1,4 @@
-import type { MatchState, SquadCommand, Team } from '@talad/sim';
+import type { CrateKind, MatchState, SquadCommand, Team } from '@talad/sim';
 import type { SfxKey } from './audio';
 import type { MatchStats } from './stats';
 
@@ -81,6 +81,11 @@ export interface TaladTestHooks {
    * given columns (real crate objects, `state: 'onPad'` at the cell center).
    */
   setPadCrates(team: Team, cols: number[]): void;
+  /** Atomic staging: validate a supported layout before replacing any pad state. */
+  setPadLayout(
+    team: Team,
+    entries: ReadonlyArray<{ col: number; layer: 0 | 1; kind?: CrateKind }>,
+  ): void;
   /** Task 9 staging: set a stall's HP (clamped to 0..STALL_MAX_HP). */
   setStallHp(team: Team, hp: number): void;
 }

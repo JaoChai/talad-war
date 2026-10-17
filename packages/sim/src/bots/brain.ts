@@ -4,15 +4,16 @@ import {
   ARENA_W,
   BOMB_THROW_RANGE,
   CENTER_DROP_ZONE,
-  GUN_RANGE,
   PICK_RADIUS,
   SLAP_RANGE,
 } from '../constants';
 import { dist2, vecClampLength, vecNormalize } from '../geometry';
+import { nearestPickableCrate } from '../crates';
+import { weaponStats } from '../items';
 import type { Rect } from '../geometry';
 import { stallCenter, stallRect } from '../map';
 import { unitDead } from '../open';
-import { canOpen, padCellAt, padCellCenter, padPreview } from '../pad';
+import { canOpen, matchRecipe, padCellAt, padCellCenter, padPreview, placeCrate } from '../pad';
 import type { Recipe } from '../pad';
 import type { Crate, CrateId, MatchState, Pad, Unit, UnitInput, UnitId, Vec2 } from '../types';
 import { botGoal, teamNeeds } from './squad';
@@ -108,6 +109,37 @@ function fetchPlan(s: MatchState, unit: Unit): BotPlan {
     };
   }
   const needed = teamNeeds(s, unit.team);
+  const preview = padPreview(s, unit.team);
+  // A weapon loss can change the need while a legal buddy/bombs recipe is
+  // ready. Finish it if it cannot extend toward the new need; don't strand it.
+  const finishReady =
+    needed !== null &&
+    preview.openable &&
+    (preview.recipe === needed || choosePadColumn(pad, needed) === null);
+  if (finishReady) {
+    const center = rectCenterOfPad(pad);
+    if (unit.carrying !== null) {
+      const unload = { x: center.x, y: center.y + (unit.team === 'fruit' ? -2.2 : 2.2) };
+      return {
+        target: unload,
+        arriveRadius: 0.15,
+        millSpeed: 0,
+        aim: null,
+        pickDrop: dist2(unit.pos, unload) <= 0.2 * 0.2,
+        open: false,
+        throwBomb: false,
+      };
+    }
+    return {
+      target: center,
+      arriveRadius: 0.3,
+      millSpeed: 0.35,
+      aim: null,
+      pickDrop: false,
+      open: canOpen(s, unit.id),
+      throwBomb: false,
+    };
+  }
   if (unit.carrying !== null) {
     const col = needed === null ? null : choosePadColumn(pad, needed);
     if (col !== null) {
@@ -134,20 +166,6 @@ function fetchPlan(s: MatchState, unit: Unit): BotPlan {
       throwBomb: false,
     };
   }
-  if (needed !== null && canOpen(s, unit.id)) {
-    const preview = padPreview(s, unit.team);
-    if (preview.openable && preview.recipe === needed) {
-      return {
-        target: { ...unit.pos },
-        arriveRadius: 0.3,
-        millSpeed: 0.35,
-        aim: null,
-        pickDrop: false,
-        open: true,
-        throwBomb: false,
-      };
-    }
-  }
   const crate = claimCrate(s, unit);
   if (crate === null) {
     // No ground crates anywhere: wait where the next one drops.
@@ -167,7 +185,8 @@ function fetchPlan(s: MatchState, unit: Unit): BotPlan {
     arriveRadius: 0.4,
     millSpeed: 0.5,
     aim: null,
-    pickDrop: dist2(unit.pos, crate.pos) <= reach,
+    pickDrop:
+      dist2(unit.pos, crate.pos) <= reach && nearestPickableCrate(s, unit.pos)?.id === crate.id,
     open: false,
     throwBomb: false,
   };
@@ -222,6 +241,7 @@ function attackPlan(s: MatchState, unit: Unit, ti: number): BotPlan {
   const dy = unit.pos.y - nr.y;
   const d = Math.hypot(dx, dy);
   const armed = unit.gun !== null;
+  const range = unit.gun === null ? SLAP_RANGE : weaponStats(unit.gun).range;
   const closeAttackGroup =
     !armed &&
     unit.bombs === 0 &&
@@ -294,8 +314,7 @@ function attackPlan(s: MatchState, unit: Unit, ti: number): BotPlan {
   }
   // Bomb carriers close in first: the throw range is shorter than the gun range,
   // and a carrier that holds at gun range never releases its bombs.
-  const holdDist =
-    unit.bombs > 0 ? BOMB_THROW_RANGE - 0.5 : armed ? GUN_RANGE - 1.5 : SLAP_RANGE - 0.6;
+  const holdDist = unit.bombs > 0 ? BOMB_THROW_RANGE - 0.5 : armed ? range - 1.5 : SLAP_RANGE - 0.6;
   // Mirrored stand-in heading for the degenerate "standing exactly on the stall"
   // case — negated for dessert so the two teams' headings stay mirror images.
   const from =
@@ -310,9 +329,7 @@ function attackPlan(s: MatchState, unit: Unit, ti: number): BotPlan {
     (e) => e.team !== unit.team && !unitDead(e) && dist2(unit.pos, e.pos) <= (SLAP_RANGE * 2) ** 2,
   );
   const aim =
-    (armed && d <= GUN_RANGE && !enemyNear) || bombsReady || (!armed && d <= SLAP_RANGE)
-      ? nr
-      : null;
+    (armed && d <= range && !enemyNear) || bombsReady || (!armed && d <= SLAP_RANGE) ? nr : null;
   if (d > holdDist + 0.4) {
     return {
       target: { x: nr.x + from.x * holdDist, y: nr.y + from.y * holdDist },
@@ -390,24 +407,39 @@ function claimCrate(s: MatchState, unit: Unit): Crate | null {
     if (mate.id >= unit.id) break; // units ascend by id
     if (mate.team !== unit.team || !mate.isBot || unitDead(mate)) continue;
     if (mate.carrying !== null || botGoal(s, mate.id) !== 'fetch') continue;
-    const crate = nearestUnclaimedCrate(s, mate.pos, claimed);
+    const crate = nearestUnclaimedCrate(s, mate, claimed);
     if (crate !== null) claimed.add(crate.id);
   }
-  return nearestUnclaimedCrate(s, unit.pos, claimed);
+  return nearestUnclaimedCrate(s, unit, claimed);
 }
 
-function nearestUnclaimedCrate(s: MatchState, pos: Vec2, claimed: Set<CrateId>): Crate | null {
+function nearestUnclaimedCrate(s: MatchState, unit: Unit, claimed: Set<CrateId>): Crate | null {
   let best: Crate | null = null;
   let bestD2 = Infinity;
+  const preferSuper = !s.itemBans?.[unit.team]?.includes('super');
   for (const crate of s.crates) {
     if (crate.state !== 'ground' || claimed.has(crate.id)) continue;
-    const d2 = dist2(pos, crate.pos);
-    if (d2 < bestD2 || (d2 === bestD2 && best !== null && crate.id < best.id)) {
+    // Coincident drops cannot be separated by movement: ordinary pickup must
+    // take the lowest ID at that point first. Reserve that prerequisite using
+    // the same greedy claims, rather than wait forever for an unreachable super
+    // or pick an unrelated normal on the way there.
+    const firstAtPoint = nearestPickableCrate(s, crate.pos);
+    if (firstAtPoint === null || claimed.has(firstAtPoint.id)) continue;
+    const d2 = dist2(unit.pos, crate.pos);
+    const quality = preferSuper ? Number(crate.kind === 'super') : 0;
+    const bestQuality = preferSuper ? Number(best?.kind === 'super') : 0;
+    if (
+      best === null ||
+      quality > bestQuality ||
+      (quality === bestQuality && (d2 < bestD2 || (d2 === bestD2 && crate.id < best.id)))
+    ) {
       best = crate;
       bestD2 = d2;
     }
   }
-  return best;
+  // At the chosen point its own crate is distance zero, so only exact
+  // co-location/lower-ID ties can redirect the claim (never nearby normals).
+  return best === null ? null : nearestPickableCrate(s, best.pos);
 }
 
 /**
@@ -441,54 +473,21 @@ function choosePadColumn(pad: Pad, needed: Recipe): number | null {
     else candidates.unshift(col); // empty cols first, highest col first among them (unshift while ascending) — ground spots stay open for the two-crate recipe; stacking cols come last
   }
   for (const col of candidates) {
-    if (recipeAfterPlace(pad, col, total) === needed) return col;
+    // Only the temporary clone sees this sentinel; no state, IDs or RNG change.
+    const trial: Pad = { ...pad, cells: pad.cells.map((c) => [...c]) };
+    const layer = placeCrate(trial, col, -1);
+    if (layer === 'full') continue;
+    if (needed === 'heavy') {
+      if (
+        layer === 'ground' &&
+        trial.cells.every((c) => c[1] === null) &&
+        (total < 3 || matchRecipe(trial) === 'heavy')
+      )
+        return col;
+    } else if (matchRecipe(trial) === needed) return col;
   }
   if ((needed === 'bombs' || needed === 'buddy') && total === 0) return candidates[0] ?? null;
   return null;
-}
-
-/**
- * matchRecipe(pad) after placeCrate(pad, col, ...): ground layer when free, else
- * upper (stacking). Mirrors pad.ts's exact-shape rules without cloning the pad.
- */
-function recipeAfterPlace(pad: Pad, col: number, total: number): Recipe | null {
-  const column = pad.cells[col];
-  if (column === undefined) return null;
-  const groundFree = (column[0] ?? null) === null;
-  const upperFree = (column[1] ?? null) === null;
-  if (!groundFree && !upperFree) return null; // placeCrate would return 'full'
-  const count = total + 1;
-  if (count === 1) return 'gun';
-  if (count > 2) return null;
-  // Exactly two crates after the placement: buddy iff some column ends with both
-  // layers (this one when the crate stacks), else bombs iff the two ground crates
-  // sit in adjacent columns.
-  let stacked = !groundFree; // placing into an occupied ground column stacks it
-  if (!stacked) {
-    for (let c = 0; c < pad.cells.length; c++) {
-      if (c === col) continue;
-      const other = pad.cells[c];
-      if (other !== undefined && (other[0] ?? null) !== null && (other[1] ?? null) !== null) {
-        stacked = true;
-      }
-    }
-  }
-  if (stacked) return 'buddy';
-  const grounds: number[] = [];
-  for (let c = 0; c < pad.cells.length; c++) {
-    const other = pad.cells[c];
-    // The placed crate itself lands on layer 0 of `col` when that ground is
-    // free — count it, or a one-crate pad can never reach the two-ground shape.
-    if (other !== undefined && ((other[0] ?? null) !== null || (c === col && groundFree))) {
-      grounds.push(c);
-    }
-  }
-  if (grounds.length !== 2) return null;
-  const a = grounds[0] ?? -1;
-  const b = grounds[1] ?? -1;
-  return Math.abs((a % 2) - (b % 2)) + Math.abs(Math.floor(a / 2) - Math.floor(b / 2)) === 1
-    ? 'bombs'
-    : null;
 }
 
 function rectCenterOfPad(pad: Pad): Vec2 {

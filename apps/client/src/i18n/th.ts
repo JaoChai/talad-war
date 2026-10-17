@@ -4,6 +4,8 @@
  * this table or the helpers below (test/i18n.test.ts pins the coverage).
  * `preview_empty` maps to '' on purpose — an empty pad hides the preview.
  */
+import type { ItemId, Recipe } from '@talad/sim';
+
 export const th = {
   gameName: 'ตลาดวอร์',
   titleTagline: 'ขนลัง • สร้างทีม • ถล่มแผง!',
@@ -18,7 +20,8 @@ export const th = {
   howtoMove: 'ขยับ แล้วขนลัง',
   howtoMoveBody: 'ลากจอยเพื่อเดิน หรือใช้ WASD กด หยิบ/วาง หรือ E เพื่อขนลังไปที่แท่นของทีม',
   howtoBuild: 'เรียงลัง แล้วกด เปิด!',
-  howtoBuildBody: 'บนแท่นของทีม: 1 ลังได้ปืน • 2 ลังข้างกันได้ระเบิด • 2 ลังซ้อนกันได้ลูกทีม',
+  howtoBuildBody:
+    'บนแท่นของทีม: 1 ลังได้ปืน • 2 ลังข้างกันได้ระเบิด • 2 ลังซ้อนกันได้ลูกทีม • 4 ลังเต็มพื้นได้บาซูก้ามะพร้าว • ลังดาวทำให้ของพิเศษ',
   howtoWin: 'ถล่มแผงอีกฝั่งให้พัง!',
   howtoWinBody: 'กด ยิง หรือคลิกเมาส์เพื่อโจมตี ชวนลูกทีมบุก ทำลายแผงศัตรูเพื่อชนะ',
   fruitTeam: 'ทีมผลไม้',
@@ -40,6 +43,9 @@ export const th = {
   recipeGun: 'ปืนฉีดน้ำ',
   recipeBombs: 'ระเบิด',
   recipeBuddy: 'ลูกทีม',
+  recipeHeavy: 'บาซูก้ามะพร้าว',
+  itemUnarmed: 'มือเปล่า',
+  itemCrate: 'ลัง',
   preview_notRecipe: 'ยังไม่ใช่สูตร',
   preview_teamFull: 'ทีมเต็มแล้ว',
   preview_empty: '',
@@ -60,10 +66,31 @@ export function t(key: TextKey): string {
   return th[key];
 }
 
-export function recipeName(recipe: 'gun' | 'bombs' | 'buddy'): string {
-  if (recipe === 'gun') return th.recipeGun;
-  if (recipe === 'bombs') return th.recipeBombs;
-  return th.recipeBuddy;
+const recipeNames: Record<Recipe, string> = {
+  gun: th.recipeGun,
+  bombs: th.recipeBombs,
+  buddy: th.recipeBuddy,
+  heavy: th.recipeHeavy,
+};
+
+const itemNames: Record<ItemId, string> = {
+  unarmed: th.itemUnarmed,
+  gun: th.recipeGun,
+  heavy: th.recipeHeavy,
+  bombs: th.recipeBombs,
+  crate: th.itemCrate,
+};
+
+export function recipeName(recipe: Recipe): string {
+  return recipeNames[recipe];
+}
+
+export function itemName(item: ItemId): string {
+  return itemNames[item];
+}
+
+export function qualityName(name: string, superItem: boolean): string {
+  return superItem ? `${name} พิเศษ` : name;
 }
 
 export function commandName(command: 'attack' | 'guard' | 'fetch'): string {

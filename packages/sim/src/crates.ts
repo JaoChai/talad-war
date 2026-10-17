@@ -6,6 +6,7 @@ import {
   MAX_GROUND_CRATES,
   PICK_RADIUS,
   SIDE_DROP_ZONES,
+  SUPER_CRATE_CHANCE,
 } from './constants';
 import { dist2 } from './geometry';
 import { isCrateGroundPoint, onPadCell } from './map';
@@ -52,7 +53,9 @@ function trySpawnInZone(
     x: zone.x + Math.cos(angle) * radius,
     y: zone.y + Math.sin(angle) * radius,
   };
-  s.crates.push({ id, pos, state: 'falling', landTick: s.tick + DROP_FALL_TICKS });
+  // Only centre drops roll quality, after the two position draws; the cap returned above.
+  const kind = zoneName === 'center' && nextRandom(s) < SUPER_CRATE_CHANCE ? 'super' : 'normal';
+  s.crates.push({ id, pos, kind, state: 'falling', landTick: s.tick + DROP_FALL_TICKS });
   s.events.push({ tick: s.tick, kind: 'crateSpawn', crateId: id, zone: zoneName });
 }
 

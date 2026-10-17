@@ -4,6 +4,7 @@ import type { MatchState, SquadCommand } from '@talad/sim';
 import { applyToggle, SquadCommands } from '../src/hud/commands';
 import { glowCellFor, PreviewText } from '../src/hud/padPreview';
 import { StallBars } from '../src/hud/stallBars';
+import { MatchHud } from '../src/hud/status';
 import { formatElapsed, MatchTimer } from '../src/hud/timer';
 
 function state(): MatchState {
@@ -90,6 +91,219 @@ describe('squad command toggle', () => {
     ui.setActive('attack');
     ui.buttons.attack.click();
     expect(received).toBeNull();
+  });
+});
+
+// Real pad records: quality must be resolved from referenced IDs, not fixtures' labels.
+function layout(s: MatchState, entries: { col: number; layer: 0 | 1; super?: boolean }[]) {
+  s.crates = [];
+  s.pads.fruit.cells = Array.from({ length: 4 }, () => [null, null]);
+  for (const entry of entries) {
+    const id = s.nextId++;
+    s.pads.fruit.cells[entry.col]![entry.layer] = id;
+    s.crates.push({
+      id,
+      pos: { x: 8.75, y: 18.75 },
+      state: 'onPad',
+      landTick: 0,
+      kind: entry.super ? 'super' : 'normal',
+    });
+  }
+}
+
+const stars = (el: HTMLElement) => el.querySelectorAll('img[src$="prop_badge_super.webp"]');
+
+describe('R1 held-item HUD', () => {
+  function setup() {
+    const mount = document.createElement('div');
+    const hud = new MatchHud(mount);
+    const s = state();
+    hud.sync(s);
+    expect(mount.querySelector('.tw-loadout')).not.toBeNull();
+    return { hud, s };
+  }
+
+  it('shows unarmed and every equipped quality, including legacy guns', () => {
+    const { hud, s } = setup();
+    expect(hud.itemEl.textContent).toBe('มือเปล่า');
+    for (const [gun, text, starCount] of [
+      [{ ammoCooldownTicks: 0 }, 'ปืนฉีดน้ำ', 0],
+      [{ kind: 'gun', super: true, ammoCooldownTicks: 0 }, 'ปืนฉีดน้ำ พิเศษ', 1],
+      [{ kind: 'heavy', super: false, ammoCooldownTicks: 0 }, 'บาซูก้ามะพร้าว', 0],
+      [{ kind: 'heavy', super: true, ammoCooldownTicks: 0 }, 'บาซูก้ามะพร้าว พิเศษ', 1],
+    ] as const) {
+      s.units[0]!.gun = gun;
+      hud.sync(s);
+      expect(hud.itemEl.textContent).toBe(text);
+      expect(stars(hud.itemEl)).toHaveLength(starCount);
+      expect(hud.itemEl.getAttribute('aria-label')).toBe(text);
+      expect(hud.itemEl.querySelectorAll('img[src$="prop_shot_coconut.webp"]')).toHaveLength(
+        'kind' in gun && gun.kind === 'heavy' ? 1 : 0,
+      );
+    }
+  });
+
+  it('prioritizes cargo by its own quality, independently of weapon and bomb quality', () => {
+    const { hud, s } = setup();
+    const u = s.units[0]!;
+    u.gun = { kind: 'heavy', super: true, ammoCooldownTicks: 0 };
+    u.bombs = 3;
+    u.bombsSuper = false;
+    layout(s, [{ col: 0, layer: 0, super: true }]);
+    u.carrying = s.crates[0]!.id;
+    hud.sync(s);
+    expect(hud.itemEl.querySelector('.tw-item-primary')!.textContent).toBe('ลัง พิเศษ');
+    expect(hud.itemEl.querySelector('.tw-item-bombs')!.textContent).toBe('ระเบิด ×3');
+    expect(stars(hud.itemEl.querySelector('.tw-item-bombs')!)).toHaveLength(0);
+    s.crates[0]!.kind = 'normal'; // rendering fixture, not gameplay mutation
+    u.bombs = 5;
+    u.bombsSuper = true;
+    hud.sync(s);
+    expect(hud.itemEl.querySelector('.tw-item-primary')!.textContent).toBe('ลัง');
+    expect(stars(hud.itemEl.querySelector('.tw-item-primary')!)).toHaveLength(0);
+    expect(hud.itemEl.querySelector('.tw-item-bombs')!.textContent).toBe('ระเบิด พิเศษ ×5');
+    expect(stars(hud.itemEl.querySelector('.tw-item-bombs')!)).toHaveLength(1);
+    u.carrying = null;
+    u.gun = { ammoCooldownTicks: 0 };
+    hud.sync(s);
+    expect(hud.itemEl.querySelector('.tw-item-primary')!.textContent).toBe('ปืนฉีดน้ำ');
+    expect(stars(hud.itemEl.querySelector('.tw-item-primary')!)).toHaveLength(0);
+  });
+
+  it('clears last-bomb, death, missing-unit, winner and reset state without stale badges', () => {
+    const { hud, s } = setup();
+    s.units[0]!.bombs = 5;
+    s.units[0]!.bombsSuper = true;
+    hud.sync(s);
+    s.units[0]!.bombs = 0; // even a stale optional flag must not display stock
+    hud.sync(s);
+    expect(hud.itemEl.textContent).toBe('มือเปล่า');
+    expect(stars(hud.itemEl)).toHaveLength(0);
+    s.units[0]!.gun = { kind: 'heavy', super: true, ammoCooldownTicks: 0 };
+    s.units[0]!.deadUntilTick = 100;
+    hud.sync(s);
+    expect(hud.itemEl.hidden).toBe(true);
+    expect(hud.itemEl.textContent).toBe('');
+    expect(stars(hud.itemEl)).toHaveLength(0);
+    hud.sync(state());
+    expect(hud.itemEl.hidden).toBe(false);
+    expect(hud.itemEl.textContent).toBe('มือเปล่า');
+    s.winner = 'fruit';
+    hud.sync(s);
+    expect(hud.itemEl.hidden).toBe(true);
+    hud.sync(state());
+    expect(hud.itemEl.hidden).toBe(false);
+    s.winner = null;
+    s.units = [];
+    hud.sync(s);
+    expect(hud.itemEl.hidden).toBe(true);
+  });
+
+  it('hides failed images but keeps Thai meaning; identical sync does not recreate or reannounce', () => {
+    const { hud, s } = setup();
+    s.units[0]!.gun = { kind: 'heavy', super: true, ammoCooldownTicks: 0 };
+    hud.sync(s);
+    const images = [...hud.itemEl.querySelectorAll('img')];
+    expect(images).toHaveLength(2);
+    for (const image of images) {
+      expect(image.alt).toBe('');
+      expect(image.getAttribute('aria-hidden')).toBe('true');
+      image.dispatchEvent(new Event('error'));
+      expect(image.hidden).toBe(true);
+    }
+    hud.sync(s);
+    expect([...hud.itemEl.querySelectorAll('img')]).toEqual(images);
+    expect(images.every((image) => image.hidden)).toBe(true);
+    expect(hud.itemEl.textContent).toBe('บาซูก้ามะพร้าว พิเศษ');
+    expect(hud.itemEl.getAttribute('role')).toBe('status');
+    expect(hud.itemEl.getAttribute('aria-atomic')).toBe('true');
+  });
+
+  it('resets the winner banner for a new match', () => {
+    const mount = document.createElement('div');
+    const hud = new MatchHud(mount);
+    const s = state();
+    s.winner = 'fruit';
+    hud.sync(s);
+    expect((mount.querySelector('.tw-winner') as HTMLElement).hidden).toBe(false);
+    hud.sync(state());
+    expect((mount.querySelector('.tw-winner') as HTMLElement).hidden).toBe(true);
+  });
+});
+
+describe('R1 preview states', () => {
+  it.each([false, true])('shows heavy with its own quality (%s), not a buddy', (quality) => {
+    const preview = new PreviewText(document.createElement('div'));
+    const s = state();
+    layout(
+      s,
+      [0, 1, 2, 3].map((col) => ({ col, layer: 0, super: col === 2 && quality })),
+    );
+    preview.sync(s);
+    expect(preview.el.textContent).toBe(`จะได้: บาซูก้ามะพร้าว${quality ? ' พิเศษ' : ''}`);
+    expect(stars(preview.el)).toHaveLength(quality ? 1 : 0);
+    expect(preview.el.querySelector('img[src$="prop_shot_coconut.webp"]')).not.toBeNull();
+  });
+
+  it('shows super gun/bombs/buddy but suppresses all stars on errors, empty and finished pads', () => {
+    const preview = new PreviewText(document.createElement('div'));
+    const s = state();
+    for (const [entries, want] of [
+      [[{ col: 0, layer: 0, super: true }], 'จะได้: ปืนฉีดน้ำ พิเศษ'],
+      [
+        [
+          { col: 0, layer: 0 },
+          { col: 1, layer: 0, super: true },
+        ],
+        'จะได้: ระเบิด พิเศษ',
+      ],
+      [
+        [
+          { col: 0, layer: 0 },
+          { col: 0, layer: 1, super: true },
+        ],
+        'จะได้: ลูกทีม พิเศษ',
+      ],
+    ] as const) {
+      layout(s, [...entries]);
+      preview.sync(s);
+      expect(preview.el.textContent).toBe(want);
+      expect(stars(preview.el)).toHaveLength(1);
+    }
+    s.units.push({ ...s.units[1]!, id: 6 }, { ...s.units[1]!, id: 7 });
+    preview.sync(s);
+    expect(preview.el.textContent).toBe('ทีมเต็มแล้ว');
+    expect(stars(preview.el)).toHaveLength(0);
+    layout(s, [
+      { col: 0, layer: 0, super: true },
+      { col: 3, layer: 0 },
+    ]);
+    preview.sync(s);
+    expect(preview.el.textContent).toBe('ยังไม่ใช่สูตร');
+    expect(stars(preview.el)).toHaveLength(0);
+    layout(s, []);
+    preview.sync(s);
+    expect(preview.el.hidden).toBe(true);
+    expect(preview.el.textContent).toBe('');
+    layout(s, [{ col: 0, layer: 0, super: true }]);
+    s.winner = 'dessert';
+    preview.sync(s);
+    expect(preview.el.hidden).toBe(true);
+    expect(stars(preview.el)).toHaveLength(0);
+  });
+
+  it('keeps super text when images fail, without recreating failed images every frame', () => {
+    const preview = new PreviewText(document.createElement('div'));
+    const s = state();
+    layout(s, [{ col: 0, layer: 0, super: true }]);
+    preview.sync(s);
+    expect(stars(preview.el)).toHaveLength(1);
+    const star = stars(preview.el)[0] as HTMLImageElement;
+    star.dispatchEvent(new Event('error'));
+    preview.sync(s);
+    expect(star.hidden).toBe(true);
+    expect(stars(preview.el)[0]).toBe(star);
+    expect(preview.el.textContent).toBe('จะได้: ปืนฉีดน้ำ พิเศษ');
   });
 });
 

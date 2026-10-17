@@ -192,7 +192,11 @@ export class MatchScene extends Phaser.Scene {
               };
             }),
         }),
-        renderSnapshot: (prev, cur, alpha) => this.view.sync(prev, cur, alpha),
+        renderSnapshot: (prev, cur, alpha) => {
+          this.view.sync(prev, cur, alpha);
+          this.preview.sync(cur);
+          this.hud.sync(cur);
+        },
         stats: () => structuredClone(this.stats),
         audioLog: () => structuredClone(audioLog),
         audioReady: () => this.audio.isReady,
@@ -283,30 +287,51 @@ export class MatchScene extends Phaser.Scene {
           this.prevState = structuredClone(this.state);
           this.syncAll();
         },
-        setPadCrates: (team: Team, cols: number[]) => {
+        setPadCrates: (team, cols) => {
+          hooks.setPadLayout(
+            team,
+            cols.map((col) => ({ col, layer: 0 })),
+          );
+        },
+        setPadLayout: (team, entries) => {
           const pad = this.state.pads[team];
-          // Drop crates this hook staged earlier so re-staging leaves no orphans.
-          const stale = new Set<number>();
-          for (const column of pad.cells) {
-            for (const id of column) if (id !== null) stale.add(id);
+          if (!pad) throw new Error('Invalid pad team');
+          // Validate the entire request before touching IDs, crates or an active
+          // opening. Input order need not put a support before its upper crate.
+          const occupied = new Set<string>();
+          for (const { col, layer, kind } of entries) {
+            const key = `${col}:${layer}`;
+            if (
+              !Number.isInteger(col) ||
+              col < 0 ||
+              col >= pad.cells.length ||
+              (layer !== 0 && layer !== 1) ||
+              (kind !== undefined && kind !== 'normal' && kind !== 'super') ||
+              occupied.has(key)
+            ) {
+              throw new Error('Invalid pad layout');
+            }
+            occupied.add(key);
           }
+          if (entries.some(({ col, layer }) => layer === 1 && !occupied.has(`${col}:0`))) {
+            throw new Error('Unsupported upper crate');
+          }
+          const stale = new Set(pad.cells.flat());
           this.state.crates = this.state.crates.filter((c) => !stale.has(c.id));
-          for (const column of pad.cells) {
-            column[0] = null;
-            column[1] = null;
-          }
-          for (const col of cols) {
-            const column = pad.cells[col];
-            if (!column) continue;
+          for (const column of pad.cells) column.fill(null);
+          pad.opening = null;
+          for (const { col, layer, kind = 'normal' } of entries) {
             const id = this.state.nextId++;
-            column[0] = id; // ground layer
+            pad.cells[col]![layer] = id;
             this.state.crates.push({
               id,
+              kind,
               pos: padCellCenter(pad, col),
               state: 'onPad',
               landTick: this.state.tick,
             });
           }
+          this.prevState = structuredClone(this.state);
           this.syncAll();
         },
         setStallHp: (team: Team, hp: number) => {

@@ -554,6 +554,26 @@
       "file": "prop_explosion.webp",
       "width": 468,
       "height": 391
+    },
+    "crate_super": {
+      "file": "prop_crate_super.webp",
+      "width": 470,
+      "height": 401
+    },
+    "crate_super_air": {
+      "file": "prop_crate_super_air.webp",
+      "width": 430,
+      "height": 425
+    },
+    "shot_coconut": {
+      "file": "prop_shot_coconut.webp",
+      "width": 278,
+      "height": 207
+    },
+    "badge_super": {
+      "file": "prop_badge_super.webp",
+      "width": 216,
+      "height": 202
     }
   },
   "arena": {

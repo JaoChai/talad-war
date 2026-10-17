@@ -3,6 +3,16 @@
 export type Team = 'fruit' | 'dessert';
 export type UnitId = number;
 export type CrateId = number;
+export type CrateKind = 'normal' | 'super';
+export type ItemId = 'unarmed' | 'gun' | 'heavy' | 'bombs' | 'crate';
+export type WeaponKind = 'gun' | 'heavy';
+export interface GunSlot {
+  ammoCooldownTicks: number;
+  /** Missing kind/quality retains the v1 gun profile. */
+  kind?: WeaponKind;
+  super?: boolean;
+}
+export type ItemBan = 'heavy' | 'super';
 
 export interface Vec2 {
   x: number;
@@ -28,8 +38,11 @@ export interface Unit {
   facing: Vec2;
   hp: number;
   carrying: CrateId | null;
-  gun: { ammoCooldownTicks: number } | null;
+  gun: GunSlot | null;
   bombs: number;
+  bombsSuper?: boolean;
+  /** Permanent unit perk, independent of equipment and retained through death. */
+  superBuddy?: boolean;
   /** Ticks until the next unarmed slap may fire (Task 4). */
   attackCooldownTicks: number;
   deadUntilTick: number | null;
@@ -41,6 +54,8 @@ export interface Crate {
   id: CrateId;
   pos: Vec2;
   state: CrateState;
+  /** Missing quality is normal for legacy callers; production spawns set it explicitly. */
+  kind?: CrateKind;
   landTick: number;
 }
 
@@ -62,7 +77,11 @@ export interface Stall {
 export interface Projectile {
   id: number;
   team: Team;
-  kind: 'bullet' | 'bomb';
+  kind: 'bullet' | 'bomb' | 'coconut';
+  /** Quality is captured at fire time; never recovered from the shooter. */
+  super?: boolean;
+  /** Coconut's remaining travel, clamped even on a fractional final tick. */
+  distanceLeft?: number;
   pos: Vec2;
   vel: Vec2;
   ttlTicks: number;
@@ -96,4 +115,6 @@ export interface MatchState {
   /** Only the latest tick's events (the client reads them for SFX/FX). */
   events: MatchEvent[];
   nextId: number;
+  /** Deterministic harness/testing rules; omitted in ordinary matches. */
+  itemBans?: Partial<Record<Team, readonly ItemBan[]>>;
 }

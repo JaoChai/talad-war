@@ -153,7 +153,7 @@ export class MatchView {
       view.sprite.setVisible(!dead);
       view.ring.setVisible(!dead);
       if (dead) continue;
-      const drawY = this.unitDrawY(unit, at.y); // keep head and overhead cargo on-canvas
+      const drawY = this.unitDrawY(unit, at.y, cur); // keep head and overhead cargo on-canvas
       // The existing lunge and the art's windup/slap share one attack clock.
       // Reduced motion keeps the pose feedback without a lunge/squash.
       const elapsed = now - view.attackAt;
@@ -206,7 +206,7 @@ export class MatchView {
       const hy = hBefore ? Phaser.Math.Linear(hBefore.pos.y, human.pos.y, alpha) : human.pos.y;
       const at = worldToStage({ x: hx, y: hy });
       // Marker rides the clamped position and never leaves the canvas.
-      const baseY = this.unitDrawY(human, at.y);
+      const baseY = this.unitDrawY(human, at.y, cur);
       this.humanMarker.setPosition(
         at.x,
         Math.max(
@@ -263,7 +263,9 @@ export class MatchView {
       y: clampDrawY(at.y) - 32 + unit.facing.y * 20,
     });
     fx.setName(name).setDepth(950).setRotation(Math.atan2(unit.facing.y, unit.facing.x));
-    fx.setData({ kind: unit.gun ? 'gun' : 'slap', size: 96 });
+    const heavy = unit.gun?.kind === 'heavy';
+    fx.setData({ kind: unit.gun ? (heavy ? 'heavy' : 'gun') : 'slap', size: heavy ? 144 : 96 });
+    if (heavy) fx.setScale(1.5);
     if (unit.gun) {
       const points = [
         32, 0, 12, 9, 10, 28, -1, 13, -24, 18, -11, 0, -24, -18, -1, -13, 10, -28, 12, -9,
@@ -272,7 +274,7 @@ export class MatchView {
         if (i % 2 === 0) out.push(new Phaser.Math.Vector2(points[i]! * 1.5, points[i + 1]! * 1.5));
         return out;
       }, []);
-      fx.fillStyle(0xffd75e, 1).lineStyle(7, 0x251414, 1);
+      fx.fillStyle(0xffd75e, 1).lineStyle(7, unit.gun.super ? 0xff3fa4 : 0x251414, 1);
       fx.fillPoints(vertices, true).strokePoints(vertices, true);
       fx.fillStyle(0xffffff, 1).fillCircle(4, 0, 10);
     } else {
@@ -341,10 +343,11 @@ export class MatchView {
   }
 
   /** The raised crate extends above the 92px body: reserve its real height too. */
-  private unitDrawY(unit: Unit, y: number): number {
+  private unitDrawY(unit: Unit, y: number, cur: MatchState): number {
     const base = clampDrawY(y);
     if (unit.carrying === null) return base;
-    const art = this.manifest?.props.crate;
+    const cargo = cur.crates.find((crate) => crate.id === unit.carrying);
+    const art = this.manifest?.props[cargo?.kind === 'super' ? 'crate_super' : 'crate'];
     const crateHeight = art ? (1.8 * STAGE_SCALE * art.height) / art.width : 0;
     return Math.max(base, (207 / 256) * UNIT_DISPLAY_HEIGHT + crateHeight + 2);
   }
@@ -457,7 +460,14 @@ export class MatchView {
           1,
           Math.max(0, 1 - (crate.landTick - cur.tick) / DROP_FALL_TICKS),
         );
-        const texture = progress >= 1 ? 'crate' : 'crate_air';
+        const texture =
+          crate.kind === 'super'
+            ? progress >= 1
+              ? 'crate_super'
+              : 'crate_super_air'
+            : progress >= 1
+              ? 'crate'
+              : 'crate_air';
         view.sprite.setTexture(texture);
         this.sizeProp(view.sprite, GROUND_CRATE_WIDTH);
         view.sprite.setY(at.y - (1 - progress) * 110);
@@ -476,13 +486,13 @@ export class MatchView {
       }
       this.fallingShadows.get(crate.id)?.destroy();
       this.fallingShadows.delete(crate.id);
-      view.sprite.setTexture('crate');
+      view.sprite.setTexture(crate.kind === 'super' ? 'crate_super' : 'crate');
       if (crate.state === 'carried') {
         const carrier = cur.units.find((u) => u.carrying === crate.id);
         if (carrier) {
           const carried = prevUnitsCarrierPos(prev, cur, carrier.id, alpha);
           at = worldToStage(carried);
-          const feetY = this.unitDrawY(carrier, at.y);
+          const feetY = this.unitDrawY(carrier, at.y, cur);
           // Carry cells have empty raised hands around y=45 (feet at y=252).
           at.y = feetY - (207 / 256) * UNIT_DISPLAY_HEIGHT;
           view.sprite.setOrigin(0.5, 1);
@@ -495,7 +505,11 @@ export class MatchView {
           const off = padCellOffset(spot.col); // mirrors sim pad.ts cell math
           at = worldToStage({ x: pad.origin.x + off.x, y: pad.origin.y + off.y });
           if (spot.layer === 1) {
-            view.sprite.setTexture('crate_stack2');
+            const lowerId = pad.cells[spot.col]![0];
+            const lower = cur.crates.find((c) => c.id === lowerId);
+            // A two-normal composite would cover a super crate in either order.
+            if (crate.kind !== 'super' && lower && lower.kind !== 'super')
+              view.sprite.setTexture('crate_stack2');
             at.y -= 22;
           }
           depth = Math.floor(at.y) - 2;
@@ -533,9 +547,11 @@ export class MatchView {
       alive.add(p.id);
       let view = this.projectiles.get(p.id);
       if (!view) {
-        const texture = p.kind === 'bomb' ? 'bomb' : `shot_${p.team}`;
+        const texture =
+          p.kind === 'bomb' ? 'bomb' : p.kind === 'coconut' ? 'shot_coconut' : `shot_${p.team}`;
         view = { sprite: this.scene.add.sprite(0, 0, texture) };
-        this.sizeProp(view.sprite, p.kind === 'bomb' ? 26 : 34);
+        view.sprite.setName(`projectile-${p.id}`);
+        this.sizeProp(view.sprite, p.kind === 'bomb' ? 26 : p.kind === 'coconut' ? 42 : 34);
         this.projectiles.set(p.id, view);
       }
       const before = prevById.get(p.id);
@@ -544,7 +560,7 @@ export class MatchView {
       const at = worldToStage({ x, y });
       view.sprite.setPosition(at.x, at.y);
       view.sprite.setDepth(Math.floor(at.y) + 3);
-      if (p.kind === 'bullet') {
+      if (p.kind !== 'bomb') {
         view.sprite.setRotation(Math.atan2(p.vel.y, p.vel.x));
       }
     }

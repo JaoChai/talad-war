@@ -102,7 +102,7 @@ test('fresh storage: Title, skippable how-to, scored Results, replay tick zero w
   // Every stepped tick feeds stats, including fastForward's multi-tick loop.
   const seed = (await getState(page)).seed;
   const stats = await finish(page, 'fruit', 1600);
-  expect(stats.dessert.stallDamage).toBe(1828.5);
+  expect(stats.dessert.stallDamage).toBe(1414.25);
   expect(stats.fruit.cratesPlaced + stats.dessert.cratesPlaced).toBeGreaterThan(0);
   expect(stats.fruit.itemsBuilt + stats.dessert.itemsBuilt).toBeGreaterThan(0);
   expect(stats.fruit.stallDamage + stats.dessert.stallDamage).toBeGreaterThan(0);
@@ -114,7 +114,7 @@ test('fresh storage: Title, skippable how-to, scored Results, replay tick zero w
       );
     }
   }
-  await expect(page.locator('[data-team="dessert"] [data-stat="stallDamage"]')).toHaveText('1829');
+  await expect(page.locator('[data-team="dessert"] [data-stat="stallDamage"]')).toHaveText('1414');
   await screenCheck(page, info, 'results');
   await page.clock.install();
   await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
@@ -133,6 +133,9 @@ test('fresh storage: Title, skippable how-to, scored Results, replay tick zero w
   await page.getByRole('button', { name: 'หน้าแรก', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'ตลาดวอร์', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'เล่น', exact: true }).click();
+  // Play starts an asynchronous scene transition. Do not let enterMatch see
+  // the departing title and try to click its now-detaching Play button again.
+  await expect(page.locator('[data-screen="title"]')).toHaveCount(0);
   await waitHooks(page);
   await expect(page.locator('[data-screen="howto"]')).toHaveCount(0);
   await finish(page, 'draw');

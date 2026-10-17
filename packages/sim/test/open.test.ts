@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   BOMBS_PER_RECIPE,
   OPEN_TICKS,
+  SUPER_BUDDY_MAX_HP,
+  TEAM_CAP,
   UNIT_MAX_HP,
   createMatch,
   step,
@@ -109,6 +111,263 @@ function buddyMatch(): MatchState {
   unitAt(s, 0, must(COL_CENTERS[1]));
   return s;
 }
+
+describe('R1 recipe grants', () => {
+  const recipes = ['gun', 'heavy', 'bombs', 'buddy'] as const;
+  type CraftRecipe = (typeof recipes)[number];
+
+  function stage(s: MatchState, recipe: CraftRecipe, supers: number): number[] {
+    const cells: [number, number][] =
+      recipe === 'heavy'
+        ? [
+            [0, 0],
+            [1, 0],
+            [2, 0],
+            [3, 0],
+          ]
+        : recipe === 'buddy'
+          ? [
+              [0, 0],
+              [0, 1],
+            ]
+          : recipe === 'bombs'
+            ? [
+                [0, 0],
+                [1, 0],
+              ]
+            : [[0, 0]];
+    const ids: number[] = [];
+    for (const [i, [col, layer]] of cells.entries()) {
+      const id = 10000 + s.tick * 10 + i;
+      putOnPad(s, 'fruit', col, layer, id);
+      must(s.crates.find((c) => c.id === id)).kind = i < supers ? 'super' : 'normal';
+      ids.push(id);
+    }
+    unitAt(s, 0, must(COL_CENTERS[0]));
+    return ids;
+  }
+
+  function complete(
+    s: MatchState,
+    recipe: CraftRecipe,
+    quality: boolean,
+    ids: number[],
+  ): MatchState {
+    s = step(s, new Map([[0, inp({ open: true })]]));
+    expect(s.events.filter((e) => e.kind === 'openStarted')).toHaveLength(1);
+    s = runTicks(s, OPEN_TICKS);
+    expect(s.events.filter((e) => e.kind === 'opened')).toEqual([
+      { tick: s.tick, kind: 'opened', recipe, super: quality, team: 'fruit', unitId: 0 },
+    ]);
+    expect(s.pads.fruit.cells).toEqual(Array.from({ length: 4 }, () => [null, null]));
+    expect(s.pads.fruit.opening).toBeNull();
+    expect(s.crates.filter((c) => ids.includes(c.id))).toEqual([]);
+    const next = step(s, new Map());
+    expect(next.events.filter((e) => e.kind === 'opened')).toHaveLength(0);
+    return s;
+  }
+
+  it('every_recipe_normal_and_super_grants_correct_slot_or_buddy', () => {
+    for (const recipe of recipes) {
+      for (const quality of [false, true]) {
+        let s = pinNoBots(createMatch(5));
+        const ids = stage(s, recipe, quality ? 1 : 0);
+        const beforeIds = s.units.map((u) => u.id);
+        s = complete(s, recipe, quality, ids);
+        const opener = must(s.units[0]);
+        if (recipe === 'gun' || recipe === 'heavy') {
+          expect(opener.gun).toEqual(
+            recipe === 'heavy'
+              ? { kind: 'heavy', super: quality, ammoCooldownTicks: 0 }
+              : quality
+                ? { kind: 'gun', super: true, ammoCooldownTicks: 0 }
+                : { ammoCooldownTicks: 0 },
+          );
+          expect(opener.bombs).toBe(0);
+          expect(opener.bombsSuper ?? false).toBe(false);
+        } else if (recipe === 'bombs') {
+          expect(opener.bombs).toBe(quality ? 5 : 3);
+          expect(opener.bombsSuper).toBe(quality);
+          expect(opener.gun).toBeNull();
+        } else {
+          const fresh = s.units.filter((u) => !beforeIds.includes(u.id));
+          expect(fresh).toHaveLength(1);
+          expect(must(fresh[0])).toMatchObject({
+            team: 'fruit',
+            isBot: true,
+            hp: quality ? SUPER_BUDDY_MAX_HP : UNIT_MAX_HP,
+            gun: null,
+            bombs: 0,
+          });
+          expect(must(fresh[0]).superBuddy ?? false).toBe(quality);
+          expect(opener.gun).toBeNull();
+          expect(opener.bombs).toBe(0);
+        }
+        expect(s.units).toHaveLength(recipe === 'buddy' ? 7 : 6);
+        expect(opener.superBuddy ?? false).toBe(false);
+      }
+    }
+  });
+
+  it('gun_heavy_replace_both_ways_and_normal_downgrades', () => {
+    for (const from of ['gun', 'heavy'] as const) {
+      for (const recipe of ['gun', 'heavy'] as const) {
+        for (const quality of [false, true]) {
+          let s = pinNoBots(createMatch(5));
+          const opener = must(s.units[0]);
+          opener.gun = { kind: from, super: true, ammoCooldownTicks: 100 };
+          opener.bombs = 2;
+          opener.bombsSuper = true;
+          opener.superBuddy = true;
+          const ids = stage(s, recipe, quality ? 1 : 0);
+          s = complete(s, recipe, quality, ids);
+          expect(must(s.units[0]).gun).toEqual(
+            recipe === 'heavy'
+              ? { kind: 'heavy', super: quality, ammoCooldownTicks: 0 }
+              : quality
+                ? { kind: 'gun', super: true, ammoCooldownTicks: 0 }
+                : { ammoCooldownTicks: 0 },
+          );
+          expect(must(s.units[0])).toMatchObject({ bombs: 2, bombsSuper: true, superBuddy: true });
+        }
+      }
+    }
+  });
+
+  it('bomb_stock_is_replaced_not_added_and_keeps_weapon', () => {
+    for (const kind of ['gun', 'heavy'] as const) {
+      for (const quality of [false, true]) {
+        for (const stock of [0, 1, 5]) {
+          let s = pinNoBots(createMatch(5));
+          Object.assign(must(s.units[0]), {
+            gun: { kind, super: true, ammoCooldownTicks: 100 },
+            bombs: stock,
+            bombsSuper: !quality,
+            superBuddy: true,
+          });
+          const ids = stage(s, 'bombs', quality ? 2 : 0); // multiple supers still grants five
+          s = complete(s, 'bombs', quality, ids);
+          expect(must(s.units[0])).toMatchObject({
+            bombs: quality ? 5 : 3,
+            bombsSuper: quality,
+            superBuddy: true,
+          });
+          expect(must(s.units[0]).gun).toEqual({
+            kind,
+            super: true,
+            ammoCooldownTicks: 100 - OPEN_TICKS - 1,
+          });
+        }
+      }
+    }
+  });
+
+  it('super_buddy_only_marks_new_unit', () => {
+    let s = pinNoBots(createMatch(5));
+    Object.assign(must(s.units[0]), {
+      gun: { kind: 'heavy', super: true, ammoCooldownTicks: 0 },
+      bombs: 2,
+      bombsSuper: true,
+    });
+    const ids = stage(s, 'buddy', 2);
+    s = complete(s, 'buddy', true, ids);
+    expect(s.units.slice(0, 6).map((u) => u.superBuddy ?? false)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+    expect(must(s.units[0])).toMatchObject({
+      gun: { kind: 'heavy', super: true, ammoCooldownTicks: 0 },
+      bombs: 2,
+      bombsSuper: true,
+    });
+    expect(must(s.units[6])).toMatchObject({
+      hp: SUPER_BUDDY_MAX_HP,
+      superBuddy: true,
+      gun: null,
+      bombs: 0,
+    });
+  });
+
+  it('lift_super_on_done_tick_cancels_without_consuming', () => {
+    let s = pinNoBots(createMatch(5));
+    const ids = stage(s, 'heavy', 1);
+    s = step(s, new Map([[0, inp({ open: true })]]));
+    expect(s.pads.fruit.opening).not.toBeNull();
+    expect(must(s.pads.fruit.opening).snapshot).toBe(JSON.stringify(s.pads.fruit.cells));
+    s = runTicks(s, OPEN_TICKS - 1);
+    unitAt(s, 1, must(COL_CENTERS[0]));
+    s = step(s, new Map([[1, inp({ pickDrop: true })]]));
+    expect(s.events.filter((e) => e.kind === 'openCancelled')).toHaveLength(1);
+    expect(s.events.filter((e) => e.kind === 'opened')).toHaveLength(0);
+    expect(s.pads.fruit.opening).toBeNull();
+    expect(must(s.units[0]).gun).toBeNull();
+    expect(must(s.units[1]).carrying).toBe(ids[0]);
+    expect(s.crates.filter((c) => ids.includes(c.id))).toHaveLength(4);
+    expect(s.crates.find((c) => c.id === ids[0])).toMatchObject({
+      state: 'carried',
+      kind: 'super',
+    });
+    expect(s.pads.fruit.cells.flat().filter((id) => id !== null)).toEqual(ids.slice(1));
+    s = runTicks(s, 2);
+    expect(must(s.units[0]).gun).toBeNull();
+  });
+
+  it('heavy_ban_fails_closed_super_ban_grants_normal', () => {
+    let s = pinNoBots(createMatch(5));
+    const ids = stage(s, 'heavy', 1);
+    s.itemBans = { fruit: ['heavy'] };
+    s = step(s, new Map([[0, inp({ open: true })]]));
+    expect(s.events.some((e) => e.kind === 'openStarted')).toBe(false);
+    // A stale/injected opening must also fail closed at completion, before clearing.
+    s.pads.fruit.opening = {
+      byUnit: 0,
+      doneTick: s.tick + 1,
+      snapshot: JSON.stringify(s.pads.fruit.cells),
+    };
+    s = step(s, new Map());
+    expect(s.events.filter((e) => e.kind === 'openCancelled')).toHaveLength(1);
+    expect(s.events.some((e) => e.kind === 'opened')).toBe(false);
+    expect(s.crates.filter((c) => ids.includes(c.id))).toHaveLength(4);
+    expect(s.pads.fruit.cells.flat().filter((id) => id !== null)).toEqual(ids);
+    expect(must(s.units[0]).gun).toBeNull();
+    for (const recipe of recipes) {
+      let normal = pinNoBots(createMatch(5));
+      const normalIds = stage(normal, recipe, 1);
+      normal.itemBans = { fruit: ['super'] };
+      normal = complete(normal, recipe, false, normalIds);
+      const opener = must(normal.units[0]);
+      if (recipe === 'gun') expect(opener.gun).toEqual({ ammoCooldownTicks: 0 });
+      if (recipe === 'heavy')
+        expect(opener.gun).toEqual({ kind: 'heavy', super: false, ammoCooldownTicks: 0 });
+      if (recipe === 'bombs') expect(opener).toMatchObject({ bombs: 3, bombsSuper: false });
+      if (recipe === 'buddy') {
+        expect(must(normal.units[6]).superBuddy ?? false).toBe(false);
+        expect(must(normal.units[6]).hp).toBe(UNIT_MAX_HP);
+      }
+    }
+  });
+
+  it('buddy cap reached during opening cancels without consuming even dead teammates', () => {
+    let s = pinNoBots(createMatch(5));
+    const ids = stage(s, 'buddy', 1);
+    s = step(s, new Map([[0, inp({ open: true })]]));
+    extraUnit(s, 90, 'fruit').isBot = false;
+    const dead = extraUnit(s, 91, 'fruit');
+    dead.deadUntilTick = 999;
+    dead.isBot = false;
+    s = runTicks(s, OPEN_TICKS);
+    expect(s.units.filter((u) => u.team === 'fruit')).toHaveLength(TEAM_CAP);
+    expect(s.events.filter((e) => e.kind === 'openCancelled')).toHaveLength(1);
+    expect(s.events.some((e) => e.kind === 'opened')).toBe(false);
+    expect(s.pads.fruit.opening).toBeNull();
+    expect(s.pads.fruit.cells.flat().filter((id) => id !== null)).toEqual(ids);
+    expect(s.crates.filter((c) => ids.includes(c.id))).toHaveLength(2);
+  });
+});
 
 describe('the Open! channel', () => {
   it('an open input with canOpen starts an opening with doneTick = tick + OPEN_TICKS', () => {
