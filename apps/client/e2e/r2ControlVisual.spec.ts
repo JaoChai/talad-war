@@ -114,6 +114,9 @@ async function renderOnce(page: Page): Promise<void> {
 async function stageMatch(page: Page): Promise<void> {
   await page.clock.install();
   await page.goto('/?seed=43');
+  // The right port is not proof of the right project (§6; talad-war and
+  // dice-bandits share 4173): assert the title before anything else.
+  await expect(page).toHaveTitle('Talad War');
   await waitHooks(page);
   await page.clock.pauseAt(await page.evaluate(() => Date.now() + 500));
   await page.evaluate(() => {
@@ -373,6 +376,7 @@ test.describe('R2 control marker', () => {
 test.describe('R2 control marker clip', () => {
   test('records the ring/arrow handoff between two bodies', async ({ page }) => {
     await page.goto('/?seed=43');
+    await expect(page).toHaveTitle('Talad War'); // §6: right port ≠ right project.
     await waitHooks(page);
     await page.evaluate(() => {
       const talad = window.__talad as unknown as TaladTestHooks;
