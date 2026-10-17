@@ -52,7 +52,17 @@ export class ControlledMarker {
     this.arrow.setOrigin(0.5, 1);
     this.arrow.setVisible(false);
 
-    this.arrowFallback = scene.add.triangle(0, 0, 0, ARROW_SIZE, ARROW_SIZE / 2, 0, ARROW_SIZE, ARROW_SIZE, WHITE);
+    this.arrowFallback = scene.add.triangle(
+      0,
+      0,
+      0,
+      ARROW_SIZE,
+      ARROW_SIZE / 2,
+      0,
+      ARROW_SIZE,
+      ARROW_SIZE,
+      WHITE,
+    );
     this.arrowFallback.setStrokeStyle(2, INK, 1);
     this.arrowFallback.setName('control-arrow-fallback');
     this.arrowFallback.setVisible(false);
@@ -65,7 +75,11 @@ export class ControlledMarker {
    * Bind the pair to one body. Null unit/body/bounds (all-bot state, dead or
    * unplaced controlled body) hides both objects.
    */
-  sync(unit: Unit | null, body: Phaser.GameObjects.Sprite | null, overheadBounds: VisualBounds | null): void {
+  sync(
+    unit: Unit | null,
+    body: Phaser.GameObjects.Sprite | null,
+    overheadBounds: VisualBounds | null,
+  ): void {
     if (this.destroyed) return;
     if (!unit || !body || !overheadBounds || unit.deadUntilTick !== null) {
       this.ring.setVisible(false);

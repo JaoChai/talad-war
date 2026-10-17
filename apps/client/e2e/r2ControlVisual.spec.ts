@@ -130,23 +130,21 @@ async function stageMatch(page: Page): Promise<void> {
         [null, null],
       ];
     cur.units[0]!.classId = undefined;
-    cur.units.push(
-      {
-        id: 6,
-        team: 'fruit',
-        pos: { x: 20, y: 12 },
-        facing: { x: 1, y: 0 },
-        isBot: true,
-        hp: 100,
-        deadUntilTick: null,
-        carrying: 902,
-        gun: null,
-        bombs: 2,
-        bombsSuper: false,
-        attackCooldownTicks: 0,
-        classId: undefined,
-      } as (typeof cur.units)[number],
-    );
+    cur.units.push({
+      id: 6,
+      team: 'fruit',
+      pos: { x: 20, y: 12 },
+      facing: { x: 1, y: 0 },
+      isBot: true,
+      hp: 100,
+      deadUntilTick: null,
+      carrying: 902,
+      gun: null,
+      bombs: 2,
+      bombsSuper: false,
+      attackCooldownTicks: 0,
+      classId: undefined,
+    } as (typeof cur.units)[number]);
     cur.crates = [
       { id: 902, kind: 'super', state: 'carried', pos: cur.units[6]!.pos, landTick: 0 },
     ];
@@ -389,22 +387,20 @@ test.describe('R2 control marker clip', () => {
           [null, null],
           [null, null],
         ];
-      cur.units.push(
-        {
-          id: 6,
-          team: 'fruit',
-          pos: { x: 20, y: 12 },
-          facing: { x: 1, y: 0 },
-          isBot: true,
-          hp: 100,
-          deadUntilTick: null,
-          carrying: null,
-          gun: null,
-          bombs: 0,
-          attackCooldownTicks: 0,
-          classId: undefined,
-        } as (typeof cur.units)[number],
-      );
+      cur.units.push({
+        id: 6,
+        team: 'fruit',
+        pos: { x: 20, y: 12 },
+        facing: { x: 1, y: 0 },
+        isBot: true,
+        hp: 100,
+        deadUntilTick: null,
+        carrying: null,
+        gun: null,
+        bombs: 0,
+        attackCooldownTicks: 0,
+        classId: undefined,
+      } as (typeof cur.units)[number]);
       // Only the two bodies in the shot; the marker handoff must read clearly.
       for (const u of cur.units) {
         if (u.id !== 0 && u.id !== 6) u.deadUntilTick = cur.tick + 100000;

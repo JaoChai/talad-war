@@ -27,10 +27,6 @@ function layout(s: MatchState, entries: { col: number; layer: 0 | 1; super?: boo
   }
 }
 
-function hud(): MatchHud {
-  return new MatchHud(document.createElement('div'));
-}
-
 describe('R2 control HUD binding', () => {
   it('after a real switch the panel shows the target body, not the released one', () => {
     const mount = document.createElement('div');
@@ -60,7 +56,9 @@ describe('R2 control HUD binding', () => {
     s.units[2]!.deadUntilTick = s.tick + 100;
     expect(switchControl(s, 1)).toBe(0);
     panel.sync(s);
-    expect(panel.itemEl.querySelector('.tw-item-primary')!.textContent).toBe('บาซูก้ามะพร้าว พิเศษ');
+    expect(panel.itemEl.querySelector('.tw-item-primary')!.textContent).toBe(
+      'บาซูก้ามะพร้าว พิเศษ',
+    );
     expect(panel.itemEl.querySelector('.tw-item-bombs')!.textContent).toBe('ระเบิด ×3');
   });
 
