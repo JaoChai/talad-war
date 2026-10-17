@@ -12,6 +12,13 @@ export interface HookUnit {
   bombs: number;
   hp: number;
   deadUntilTick: number | null;
+  /** R2: bots are authored by the sim; control ownership is `!isBot`. */
+  isBot: boolean;
+  /** Persistent class; omitted for basic teammates. */
+  classId?: string;
+  /** Persistent super-buddy perk; survives death. */
+  superBuddy?: boolean;
+  bombsSuper?: boolean;
 }
 
 export interface HookState {
@@ -19,10 +26,34 @@ export interface HookState {
   tick: number;
   units: HookUnit[];
   crates: { id: number; pos: { x: number; y: number }; state: string; landTick: number }[];
-  pads: Record<string, { origin: { x: number; y: number }; cells: (number | null)[][] }>;
+  pads: Record<
+    string,
+    {
+      origin: { x: number; y: number };
+      cells: (number | null)[][];
+      opening: {
+        byUnit: number;
+        doneTick: number;
+        snapshot: string;
+        classId?: string;
+      } | null;
+    }
+  >;
   stalls: Record<string, { team: string; pos: { x: number; y: number }; hp: number }>;
   projectiles: { id: number }[];
-  events: { kind: string; tick: number; target?: unknown; dmg?: number }[];
+  events: {
+    kind: string;
+    tick: number;
+    target?: unknown;
+    dmg?: number;
+    source?: unknown;
+    team?: unknown;
+    unitId?: unknown;
+    spawnedUnitId?: unknown;
+    classId?: unknown;
+    fromUnitId?: unknown;
+    toUnitId?: unknown;
+  }[];
   winner: string | null;
   commands: {
     fruit: 'attack' | 'guard' | 'fetch' | null;
@@ -68,6 +99,8 @@ declare global {
         }>,
       ): void;
       setStallHp(team: 'fruit' | 'dessert', hp: number): void;
+      /** R2-11 dev-only staging: step one tick with explicit per-unit inputs. */
+      stepInputs(inputs: ReadonlyArray<readonly [number, import('@talad/sim').UnitInput]>): void;
     };
   }
 }
@@ -104,6 +137,18 @@ export function padCrateCount(st: HookState): number {
   );
 }
 
+/**
+ * The controlled hook unit: the lowest-ID `!isBot` unit, exactly like the
+ * production helper (sim control.ts). Body-derived, including while dead.
+ */
+export function controlledHookUnit(s: HookState): HookUnit | null {
+  let controlled: HookUnit | null = null;
+  for (const unit of s.units) {
+    if (!unit.isBot && (controlled === null || unit.id < controlled.id)) controlled = unit;
+  }
+  return controlled;
+}
+
 export function nearestGroundCrate(
   st: HookState,
   from: { x: number; y: number },
@@ -124,7 +169,7 @@ export function nearestGroundCrate(
 export function nearestEnemy(st: HookState, team: 'fruit' | 'dessert'): HookUnit | null {
   let best: HookUnit | null = null;
   let bestD = Infinity;
-  const me = st.units[0];
+  const me = controlledHookUnit(st); // drivers steer the controlled body, not ID 0
   if (!me) return null;
   for (const u of st.units) {
     if (u.team === team || u.deadUntilTick !== null) continue;
@@ -271,7 +316,7 @@ export async function driveTo(
   let sinceProgress = 0;
   while (Date.now() - t0 < budget) {
     const st = await getState(page);
-    const me = st.units[0];
+    const me = controlledHookUnit(st); // drivers steer the controlled body, not ID 0
     if (!me) return false;
     if (me.deadUntilTick !== null) {
       await driver.release();
