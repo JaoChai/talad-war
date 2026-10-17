@@ -6,10 +6,19 @@ import {
   PAD_FLOOR,
   STALL_MAX_HP,
   UNIT_SPEED,
+  controlledUnit,
   stallRect,
 } from '@talad/sim';
-import { playCharacterPose, type ArtManifest, type CharacterAnim } from './anims';
+import { playCharacterPose, type ArtManifest, type CharacterAnim, type HeadFrame } from './anims';
 import type { Crate, MatchState, Team, Unit } from '@talad/sim';
+import {
+  bodyBounds,
+  classVisualGeometry,
+  unionBounds,
+  type BodyTransform,
+  type VisualBounds,
+} from './classGeometry';
+import { ClassDecorations } from './classDecorations';
 import { STAGE_SCALE, clampDrawY, padCellOffset, padCenterOffset, worldToStage } from './world';
 
 /** Team colour tokens approved in the Task 7 HUD mockup. */
@@ -30,6 +39,16 @@ const STALL_CUE_GAP_MS = 200;
 const STALL_SHAKE_MS = 160;
 const GROUND_CRATE_WIDTH = 2.2 * STAGE_SCALE;
 const WINDUP_MS = 110;
+/** Carried crates hang from the raised hands at 207/256 of the sheet cell. */
+const CARGO_OFFSET = 207 / 256;
+/** §4.3: the drawn union top stays at or below this logical stage y. */
+const UNION_TOP_MIN = 2;
+/** R2-8: extra top headroom reserved on controlled bodies for the later arrow. */
+const CONTROL_ARROW_RESERVE = 24;
+/** Badge (24 px) plus its 4 px gap above the drawn union. */
+const KIT_BAND = 28;
+/** Star-only band (16 px + 4 px gap) for classless super buddies. */
+const STAR_BAND = 20;
 
 interface UnitView {
   sprite: Phaser.GameObjects.Sprite;
@@ -38,6 +57,10 @@ interface UnitView {
   attackAt: number;
   attackTick: number;
   attackDir: { x: number; y: number };
+  /** Final clamped feet position of the current sync (NaN before placement). */
+  feetY: number;
+  /** Decorations union bounds of the current sync (null when dead/unplaced). */
+  overhead: VisualBounds | null;
 }
 
 interface CrateView {
@@ -75,9 +98,16 @@ export class MatchView {
   >();
   /** Small marker above the human unit (card Task mapping). */
   private readonly humanMarker: Phaser.GameObjects.Triangle;
+  /** §4.3 frame-attached accessories (head/badge/star), one set per unit. */
+  private readonly decorations: ClassDecorations;
 
   constructor(private readonly scene: Phaser.Scene) {
-    this.manifest = scene.cache.json.get('art-manifest') as ArtManifest | undefined;
+    // Boot publishes the validated manifest on the registry (Phaser 4's JSON
+    // cache is read-only); fall back to the raw cache entry if boot skipped it.
+    this.manifest =
+      (scene.registry.get('art-manifest') as ArtManifest | undefined) ??
+      (scene.cache.json.get('art-manifest') as ArtManifest | undefined);
+    this.decorations = new ClassDecorations(scene, this.manifest);
     const arena = scene.add.image(0, 0, 'arena');
     arena.setOrigin(0, 0);
     arena.setDisplaySize(scene.scale.width, scene.scale.height);
@@ -149,11 +179,15 @@ export class MatchView {
         ? Math.hypot(before.pos.x - unit.pos.x, before.pos.y - unit.pos.y) / DT
         : 0;
       const moving = speed > 0.2;
+      view.feetY = NaN;
+      view.overhead = null;
       const dead = unit.deadUntilTick !== null;
       view.sprite.setVisible(!dead);
       view.ring.setVisible(!dead);
-      if (dead) continue;
-      const drawY = this.unitDrawY(unit, at.y, cur); // keep head and overhead cargo on-canvas
+      if (dead) {
+        view.overhead = this.decorations.sync(unit, view.sprite, null);
+        continue;
+      }
       // The existing lunge and the art's windup/slap share one attack clock.
       // Reduced motion keeps the pose feedback without a lunge/squash.
       const elapsed = now - view.attackAt;
@@ -164,17 +198,6 @@ export class MatchView {
         attacking && elapsed >= WINDUP_MS && !this.reducedMotion.matches
           ? Math.sin((Math.PI * (elapsed - WINDUP_MS)) / (220 - WINDUP_MS))
           : 0;
-      view.sprite.setPosition(
-        at.x + view.attackDir.x * (12 * pulse + 6 * slapPunch),
-        drawY + view.attackDir.y * (12 * pulse + 6 * slapPunch),
-      );
-      view.sprite.setDisplaySize(
-        UNIT_DISPLAY_HEIGHT * (1 + 0.08 * pulse + 0.05 * slapPunch),
-        UNIT_DISPLAY_HEIGHT * (1 - 0.08 * pulse),
-      );
-      view.sprite.setDepth(Math.floor(drawY));
-      view.ring.setPosition(at.x, drawY - 2);
-      view.ring.setDepth(Math.floor(drawY) - 1);
       const hurt = now < view.hurtUntil;
       const pose: CharacterAnim = hurt
         ? 'hurt'
@@ -196,24 +219,63 @@ export class MatchView {
         this.reducedMotion.matches || (pose === 'carry' && !moving),
       );
       view.sprite.setFlipX((pulse > 0 ? view.attackDir.x : unit.facing.x) < -0.01);
+      // §4.2: the 92 px body constant scales with the class (Giant 1.20x);
+      // pose squash/lunge ride on top of that scaled display size.
+      const bodyScale = this.classBodyScale(unit);
+      const bodyW = UNIT_DISPLAY_HEIGHT * bodyScale * (1 + 0.08 * pulse + 0.05 * slapPunch);
+      const bodyH = UNIT_DISPLAY_HEIGHT * bodyScale * (1 - 0.08 * pulse);
+      const base = clampDrawY(at.y);
+      const cargoBounds = this.carriedCargoBounds(unit, cur, at.x, base);
+      const lunge = 12 * pulse + 6 * slapPunch;
+      const drawY = this.unionClampFeetY(
+        unit,
+        cur,
+        base,
+        {
+          x: at.x,
+          y: base,
+          width: bodyW,
+          height: bodyH,
+          originX: view.sprite.originX,
+          originY: view.sprite.originY,
+          flipX: view.sprite.flipX,
+        },
+        cargoBounds,
+      );
+      view.sprite.setPosition(at.x + view.attackDir.x * lunge, drawY + view.attackDir.y * lunge);
+      view.sprite.setDisplaySize(bodyW, bodyH);
+      view.sprite.setDepth(Math.floor(drawY));
+      view.ring.setPosition(at.x, drawY - 2);
+      view.ring.setDepth(Math.floor(drawY) - 1);
+      // §4.3: Giant's ground ring reads 1.20x wider without a bigger hitbox.
+      view.ring.setSize(44 * bodyScale, 15 * bodyScale);
+      // Cargo bounds ride the applied clamp shift before decorations float on.
+      const shift = drawY - base;
+      const placedCargo = cargoBounds
+        ? { ...cargoBounds, top: cargoBounds.top + shift, bottom: cargoBounds.bottom + shift }
+        : null;
+      view.overhead = this.decorations.sync(unit, view.sprite, placedCargo);
     }
 
-    // Marker above the human unit (unit 0, fruit).
+    // Marker above the human unit (unit 0, fruit). It rides the drawn union
+    // bounds so it clears the head accessory, cargo and overhead badge/star
+    // band (R2-9 owns replacing this marker with the white ring/arrow pair).
     const human = cur.units[0];
     if (human && human.deadUntilTick === null) {
       const hBefore = prevUnits.get(human.id);
       const hx = hBefore ? Phaser.Math.Linear(hBefore.pos.x, human.pos.x, alpha) : human.pos.x;
       const hy = hBefore ? Phaser.Math.Linear(hBefore.pos.y, human.pos.y, alpha) : human.pos.y;
       const at = worldToStage({ x: hx, y: hy });
-      // Marker rides the clamped position and never leaves the canvas.
-      const baseY = this.unitDrawY(human, at.y, cur);
+      const hView = this.units.get(human.id);
+      const top = hView?.overhead?.top;
+      const baseY =
+        hView && Number.isFinite(hView.feetY)
+          ? hView.feetY
+          : clampDrawY(at.y) - UNIT_DISPLAY_HEIGHT * this.classBodyScale(human);
       this.humanMarker.setPosition(
         at.x,
         Math.max(
-          baseY -
-            UNIT_DISPLAY_HEIGHT -
-            6 +
-            (this.reducedMotion.matches ? 0 : Math.sin(now / 250) * 3),
+          (top ?? baseY) - 6 + (this.reducedMotion.matches ? 0 : Math.sin(now / 250) * 3),
           12,
         ),
       );
@@ -236,7 +298,8 @@ export class MatchView {
     sprite.setName(`unit-${unit.id}`);
     const anchor = this.manifest?.characters[skin]?.anchor;
     sprite.setOrigin(anchor?.[0] ?? 0.5, anchor?.[1] ?? UNIT_ANCHOR_Y);
-    sprite.setDisplaySize(UNIT_DISPLAY_HEIGHT, UNIT_DISPLAY_HEIGHT);
+    const bodyScale = this.classBodyScale(unit);
+    sprite.setDisplaySize(UNIT_DISPLAY_HEIGHT * bodyScale, UNIT_DISPLAY_HEIGHT * bodyScale);
     const ring = this.scene.add.ellipse(0, 0, 44, 15, TEAM_COLOURS[unit.team], 0.4);
     const view: UnitView = {
       sprite,
@@ -245,6 +308,8 @@ export class MatchView {
       attackAt: -Infinity,
       attackTick: -1,
       attackDir: { x: 0, y: 0 },
+      feetY: NaN,
+      overhead: null,
     };
     this.units.set(unit.id, view);
     return view;
@@ -342,14 +407,67 @@ export class MatchView {
     });
   }
 
-  /** The raised crate extends above the 92px body: reserve its real height too. */
-  private unitDrawY(unit: Unit, y: number, cur: MatchState): number {
-    const base = clampDrawY(y);
-    if (unit.carrying === null) return base;
+  /**
+   * §4.3 clamp: shift the rest-pose feet DOWN only enough to keep the union of
+   * body, head accessory, carried cargo and the overhead badge/star band at or
+   * below the stage top, reserving 24 extra logical px on controlled bodies
+   * for the later control arrow. The transient attack lunge applies after
+   * this, as in R1. Memoised per sync on the unit view for the marker/cargo.
+   */
+  private unionClampFeetY(
+    unit: Unit,
+    cur: MatchState,
+    base: number,
+    candidate: BodyTransform,
+    cargoBounds: VisualBounds | null,
+  ): number {
+    const view = this.units.get(unit.id);
+    const head = view ? this.headFrameOf(view.sprite) : null;
+    const drawn = unionBounds(
+      unionBounds(bodyBounds(candidate), head ? classVisualGeometry(candidate, head).bounds : null),
+      cargoBounds,
+    );
+    const entry = unit.classId ? this.manifest?.classArt?.classes[unit.classId] : undefined;
+    const star = unit.superBuddy === true && this.manifest?.props['badge_super'] !== undefined;
+    const kitRise = entry ? KIT_BAND : star ? STAR_BAND : 0;
+    const unionTop = drawn ? drawn.top - kitRise : -Infinity;
+    const required =
+      UNION_TOP_MIN + (controlledUnit(cur)?.id === unit.id ? CONTROL_ARROW_RESERVE : 0);
+    const feetY = base + Math.max(0, required - unionTop);
+    if (view) view.feetY = feetY;
+    return feetY;
+  }
+
+  /** Current-frame head landmark of the sprite's skin, or null without art. */
+  private headFrameOf(sprite: Phaser.GameObjects.Sprite): HeadFrame | null {
+    const frames = this.manifest?.classArt?.headFrames[sprite.texture.key];
+    if (!frames) return null;
+    const index = Number(sprite.frame.name);
+    if (!Number.isInteger(index) || index < 0 || index >= frames.length) return null;
+    return frames[index] ?? null;
+  }
+
+  /** §4.2: Giant bodies draw 1.20x; everyone else uses the plain profile. */
+  private classBodyScale(unit: Unit): number {
+    if (!unit.classId) return 1;
+    return this.manifest?.classArt?.classes[unit.classId]?.bodyScale ?? 1;
+  }
+
+  /** Carried-crate rectangle at candidate feet height (x-true for kit centring). */
+  private carriedCargoBounds(
+    unit: Unit,
+    cur: MatchState,
+    x: number,
+    feetY: number,
+  ): VisualBounds | null {
+    if (unit.carrying === null) return null;
     const cargo = cur.crates.find((crate) => crate.id === unit.carrying);
     const art = this.manifest?.props[cargo?.kind === 'super' ? 'crate_super' : 'crate'];
-    const crateHeight = art ? (1.8 * STAGE_SCALE * art.height) / art.width : 0;
-    return Math.max(base, (207 / 256) * UNIT_DISPLAY_HEIGHT + crateHeight + 2);
+    if (!art) return null;
+    const width = 1.8 * STAGE_SCALE;
+    const height = (width * art.height) / art.width;
+    const bottom = feetY - CARGO_OFFSET * UNIT_DISPLAY_HEIGHT * this.classBodyScale(unit);
+    return { left: x - width / 2, right: x + width / 2, top: bottom - height, bottom };
   }
 
   /** Width is a design choice; height always comes from the cached art manifest. */
@@ -492,9 +610,12 @@ export class MatchView {
         if (carrier) {
           const carried = prevUnitsCarrierPos(prev, cur, carrier.id, alpha);
           at = worldToStage(carried);
-          const feetY = this.unitDrawY(carrier, at.y, cur);
-          // Carry cells have empty raised hands around y=45 (feet at y=252).
-          at.y = feetY - (207 / 256) * UNIT_DISPLAY_HEIGHT;
+          // Carry cells have empty raised hands around y=45 (feet at y=252);
+          // §4.2 scales the carry offset with the Giant's taller body.
+          const raise = CARGO_OFFSET * UNIT_DISPLAY_HEIGHT * this.classBodyScale(carrier);
+          const hView = this.units.get(carrier.id);
+          const feetY = hView && Number.isFinite(hView.feetY) ? hView.feetY : clampDrawY(at.y);
+          at.y = feetY - raise;
           view.sprite.setOrigin(0.5, 1);
           depth = Math.floor(feetY) + 2;
         }
