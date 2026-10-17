@@ -568,9 +568,19 @@ test.describe('R2 class art clip', () => {
       cur.units[0]!.attackCooldownTicks = 30;
       window.__r2Frames.prev = prev;
     });
-    await page.waitForTimeout(150);
-    const slap = await probe();
-    expect([14, 15]).toContain(slap.frame); // windup or slap cell
+    // The RAF loop advances the clip a fixed step per tick, so the frame at a
+    // fixed wall-time wait depends on machine cadence (slower CI runners land
+    // outside the window — seen in CI run 39048721515). Poll until the slap
+    // anim reaches the windup/slap cells instead of sampling once.
+    await expect
+      .poll(
+        async () => {
+          const f = (await probe()).frame;
+          return [14, 15].includes(f) ? 'slap-window' : `frame-${f}`;
+        },
+        { timeout: 3_000, intervals: [50] },
+      )
+      .toBe('slap-window');
     await page.waitForTimeout(550);
     const sprites = await page.evaluate(() => window.__talad.artFeedback().sprites);
     const head = sprites.find((s) => s.name === 'unit-0-head');
