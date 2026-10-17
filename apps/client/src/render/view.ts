@@ -19,6 +19,7 @@ import {
   type VisualBounds,
 } from './classGeometry';
 import { ClassDecorations } from './classDecorations';
+import { ControlledMarker } from './controlledMarker';
 import { STAGE_SCALE, clampDrawY, padCellOffset, padCenterOffset, worldToStage } from './world';
 
 /** Team colour tokens approved in the Task 7 HUD mockup. */
@@ -92,8 +93,8 @@ export class MatchView {
     Team,
     { text: Phaser.GameObjects.Text; at: number; dmg: number }
   >();
-  /** Small marker above the human unit (card Task mapping). */
-  private readonly humanMarker: Phaser.GameObjects.Triangle;
+  /** §5 white ring/arrow pair above the controlled body — never a second pair. */
+  private readonly controlMarker: ControlledMarker;
   /** §4.3 frame-attached accessories (head/badge/star), one set per unit. */
   private readonly decorations: ClassDecorations;
 
@@ -118,8 +119,7 @@ export class MatchView {
       this.stallSprites[team] = stall;
     }
 
-    this.humanMarker = scene.add.triangle(0, 0, 0, 10, 10, 0, 20, 10, 0xffd75e);
-    this.humanMarker.setDepth(2000);
+    this.controlMarker = new ControlledMarker(scene, this.manifest);
   }
 
   sync(prev: MatchState, cur: MatchState, alpha: number): void {
@@ -253,32 +253,17 @@ export class MatchView {
       view.overhead = this.decorations.sync(unit, view.sprite, placedCargo);
     }
 
-    // Marker above the human unit (unit 0, fruit). It rides the drawn union
-    // bounds so it clears the head accessory, cargo and overhead badge/star
-    // band (R2-9 owns replacing this marker with the white ring/arrow pair).
-    const human = cur.units[0];
-    if (human && human.deadUntilTick === null) {
-      const hBefore = prevUnits.get(human.id);
-      const hx = hBefore ? Phaser.Math.Linear(hBefore.pos.x, human.pos.x, alpha) : human.pos.x;
-      const hy = hBefore ? Phaser.Math.Linear(hBefore.pos.y, human.pos.y, alpha) : human.pos.y;
-      const at = worldToStage({ x: hx, y: hy });
-      const hView = this.units.get(human.id);
-      const top = hView?.overhead?.top;
-      const baseY =
-        hView && Number.isFinite(hView.feetY)
-          ? hView.feetY
-          : clampDrawY(at.y) - UNIT_DISPLAY_HEIGHT * this.classBodyScale(human);
-      this.humanMarker.setPosition(
-        at.x,
-        Math.max(
-          (top ?? baseY) - 6 + (this.reducedMotion.matches ? 0 : Math.sin(now / 250) * 3),
-          12,
-        ),
-      );
-      this.humanMarker.setVisible(true);
-    } else {
-      this.humanMarker.setVisible(false);
-    }
+    // §5: the one white ring/arrow pair rides the controlled body — released
+    // bodies are bots and never carry it. Corpse/all-bot cases hide through
+    // the null unit/overhead bounds; positioning reuses the drawn body and
+    // decorations bounds the loop just wrote.
+    const controlled = controlledUnit(cur);
+    const controlledView = controlled ? this.units.get(controlled.id) : undefined;
+    this.controlMarker.sync(
+      controlled && controlled.deadUntilTick === null ? controlled : null,
+      controlledView?.sprite ?? null,
+      controlledView?.overhead ?? null,
+    );
 
     this.syncCrates(prev, cur, alpha);
     this.syncProjectiles(prev, cur, alpha);

@@ -1,16 +1,18 @@
-import { PAD_CELL_SIZE, padCellAt, padPreview } from '@talad/sim';
+import { PAD_CELL_SIZE, padCellAt, padPreview, controlledUnit } from '@talad/sim';
 import type { MatchState } from '@talad/sim';
 import { th, recipeName, qualityName } from '../i18n/th';
 import { itemLabel } from './status';
 import { STAGE_H, STAGE_W, worldToStage } from '../render/world';
 
 /**
- * The pad cell unit 0 stands on when alive on its own pad, else null — the
- * glow cell's source of truth (pure, unit-tested). The Phaser sprite that
- * draws it lives in padGlow.ts so this module stays engine-free.
+ * The pad cell the controlled body stands on when alive on its own pad, else
+ * null — the glow cell's source of truth (pure, unit-tested). R2-9: follows
+ * `controlledUnit`, so a released body is a bot and never lights the glow.
+ * The Phaser sprite that draws it lives in padGlow.ts so this module stays
+ * engine-free (happy-dom has no 2d context).
  */
 export function glowCellFor(state: MatchState): number | null {
-  const unit = state.units[0];
+  const unit = controlledUnit(state);
   if (!unit || unit.team !== 'fruit' || unit.deadUntilTick !== null) return null;
   return padCellAt(state.pads.fruit, unit.pos);
 }

@@ -1,3 +1,4 @@
+import { controlledUnit } from '@talad/sim';
 import type { MatchState } from '@talad/sim';
 import { itemName, qualityName, th } from '../i18n/th';
 
@@ -26,7 +27,7 @@ export function itemLabel(text: string, superItem: boolean, heavy = false): HTML
   return label;
 }
 
-/** Winner banner and the human's independent primary/cargo and bomb slots. */
+/** Winner banner and the controlled body's independent primary/cargo and bomb slots. */
 export class MatchHud {
   readonly itemEl: HTMLDivElement;
   private readonly winner: HTMLDivElement;
@@ -56,7 +57,9 @@ export class MatchHud {
     if (this.winner.textContent !== winnerText) this.winner.textContent = winnerText;
     this.winner.hidden = winnerText === '';
 
-    const unit = state.units[0];
+    // R2-9: the panel binds to the controlled body (lowest-ID non-bot unit),
+    // not array index 0 — switching must move every loadout pixel with it.
+    const unit = controlledUnit(state);
     const visible = !!unit && unit.deadUntilTick === null && state.winner === null;
     this.itemEl.hidden = !visible;
     if (!visible) {

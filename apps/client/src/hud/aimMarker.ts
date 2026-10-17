@@ -1,12 +1,12 @@
 import Phaser from 'phaser';
-import { autoAimTarget } from '@talad/sim';
+import { autoAimTarget, controlledUnit } from '@talad/sim';
 import type { MatchState } from '@talad/sim';
 import { worldToStage } from '../render/world';
 
 const FRUIT_COLOUR = 0x2f7bff;
 const RADIUS = 16;
 
-/** Small fruit-coloured ring at `autoAimTarget(state, 0)` (card Task 9). */
+/** Small fruit-coloured ring at `autoAimTarget(state, <controlled id>)` (R2-9). */
 export class AimMarker {
   private readonly ring: Phaser.GameObjects.Arc;
 
@@ -18,10 +18,12 @@ export class AimMarker {
   }
 
   sync(state: MatchState): void {
-    const human = state.units[0];
+    // R2-9: aim from the controlled body — its enemy is highlighted, never
+    // the body it released (and never the marker's own target).
+    const controlled = controlledUnit(state);
     const target =
-      human && human.deadUntilTick === null && state.winner === null
-        ? autoAimTarget(state, human.id)
+      controlled && controlled.deadUntilTick === null && state.winner === null
+        ? autoAimTarget(state, controlled.id)
         : null;
     if (!target) {
       this.ring.setVisible(false);
