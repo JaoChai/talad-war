@@ -6,7 +6,7 @@ import { spawnCrates, tryDrop, tryPick, updateCrateFalls } from './crates';
 import { clamp, vecClampLength, vecNormalize } from './geometry';
 import { isUnitWalkable } from './map';
 import { startOpen, unitDead, updateOpens } from './open';
-import { canOpen, liftTop, padCellAt, padCellCenter, placeCrate } from './pad';
+import { canStartOpen, liftTop, padCellAt, padCellCenter, placeCrate } from './pad';
 import type { MatchState, Pad, SquadCommand, Team, Unit, UnitInput, UnitId, Vec2 } from './types';
 
 /**
@@ -79,7 +79,7 @@ export function step(
   for (const unit of next.units) {
     const input = effective.get(unit.id) ?? IDLE_INPUT;
     if (unitDead(unit)) continue; // the dead do not act (Task 4 rule)
-    if (input.open && canOpen(next, unit.id)) openWins.add(unit.id);
+    if (input.open && canStartOpen(next, unit.id, input.classPick)) openWins.add(unit.id);
     if (!input.pickDrop || openWins.has(unit.id)) continue;
     if (padCellAt(next.pads[otherTeam(unit.team)], unit.pos) !== null) continue; // no stealing
     const col = padCellAt(next.pads[unit.team], unit.pos);
@@ -116,8 +116,8 @@ export function step(
   updateOpens(next);
   for (const unit of next.units) {
     const input = effective.get(unit.id) ?? IDLE_INPUT;
-    if (input.open && openWins.has(unit.id) && canOpen(next, unit.id)) {
-      startOpen(next, unit.id);
+    if (input.open && openWins.has(unit.id) && canStartOpen(next, unit.id, input.classPick)) {
+      startOpen(next, unit.id, input.classPick);
     }
   }
 
