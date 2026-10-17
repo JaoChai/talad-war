@@ -59,6 +59,14 @@ declare global {
       setCommand(team: 'fruit' | 'dessert', cmd: 'attack' | 'guard' | 'fetch' | null): void;
       placeUnit(unitId: number, x: number, y: number): void;
       setPadCrates(team: 'fruit' | 'dessert', cols: number[]): void;
+      setPadLayout(
+        team: import('@talad/sim').Team,
+        entries: ReadonlyArray<{
+          col: number;
+          layer: 0 | 1;
+          kind?: import('@talad/sim').CrateKind;
+        }>,
+      ): void;
       setStallHp(team: 'fruit' | 'dessert', hp: number): void;
     };
   }
