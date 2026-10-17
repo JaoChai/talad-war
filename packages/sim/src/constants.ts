@@ -62,6 +62,33 @@ export const HEAVY_RADIUS = 2.4;
 export const HEAVY_STALL_MULT = 0.25;
 export const BOT_HEAVY_MIN_SUPPLY = 4;
 
+/** R2-only starting profiles and bot knobs; not yet harness-tuned. */
+export const BOXER_MAX_HP = 130;
+export const BOXER_SPEED_MULT = 1.1;
+export const BOXER_SLAP_DMG = 12;
+export const HEALER_MAX_HP = 100;
+export const HEALER_SPEED_MULT = 1;
+export const HEALER_RADIUS = 3.25;
+export const HEALER_AURA_HP_PER_SEC = 4;
+export const HEALER_SELF_HP_PER_SEC = 2;
+export const NINJA_MAX_HP = 75;
+export const NINJA_SPEED_MULT = 1.35;
+export const NINJA_KNOCK_COOLDOWN_TICKS = 40;
+export const GIANT_MAX_HP = 200;
+export const GIANT_SPEED_MULT = 0.75;
+export const GIANT_BOMB_DAMAGE_MULT = 0.6;
+export const CLASS_SUPER_HP_MULT = 1.05;
+export const CLASS_SUPER_SPEED_MULT = 1.03;
+export const BOT_CLASS_MIN_SUPPLY = 4;
+export const BOT_CLASS_TARGET_COUNT = 2;
+export const BOT_CLASS_WOUNDED_FRACTION = 0.65;
+export const BOT_CLASS_ENEMY_PAD_CRATES = 2;
+export const BOT_CLASS_DUPLICATE_PENALTY = 4;
+export const BOT_CLASS_HEALER_NEED_BONUS = 3;
+export const BOT_CLASS_NINJA_NEED_BONUS = 2;
+export const BOT_CLASS_GIANT_NEED_BONUS = 2;
+export const BOT_CLASS_BOXER_NEED_BONUS = 1;
+
 export const PAD_CELL_SIZE = 1.5;
 export const PAD_FLOOR = 2; // 2x2 floor cells -> 4 pad columns
 export const PAD_LAYERS = 2; // cells[col][layer 0..1]
