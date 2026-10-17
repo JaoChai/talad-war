@@ -1,3 +1,14 @@
+@import './r2.css';
+
+/* R2 screen-HUD controls must receive pointer starts over the touch-only
+   joystick zone (plan §5: the zone yields to controls). Both HUD containers
+   are pointer-events:none; this lifts the interactive R2 controls above the
+   .tw-hud-root subtree in stacking order. */
+#tw-class-pick,
+#tw-btn-switch {
+  z-index: 13;
+}
+
 html,
 body {
   margin: 0;

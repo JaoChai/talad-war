@@ -252,11 +252,11 @@ describe('R2 class/switch controls', () => {
     mount.remove();
   });
 
-  it('r2_css_pins_plan_section_5_tokens_widths_and_stays_unwired', () => {
+  it('r2_css_pins_plan_section_5_tokens_widths_and_shell_import', () => {
     const css = readFileSync(join(process.cwd(), 'src', 'r2.css'), 'utf8');
     const shell = readFileSync(join(process.cwd(), 'src', 'shell.css'), 'utf8');
-    // R2-10 ships rules only: the shell must not import the stylesheet yet.
-    expect(shell).not.toContain('r2.css');
+    // R2-11 integration: the shell imports the R2 stylesheet (before any rule).
+    expect(shell.startsWith("@import './r2.css';")).toBe(true);
     // §5 scoped tokens on .tw-screen-hud.
     for (const token of [
       '--tw-r2-ink: #1b1030',

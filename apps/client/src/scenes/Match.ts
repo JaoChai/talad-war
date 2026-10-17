@@ -1,25 +1,34 @@
 import Phaser from 'phaser';
-import { STALL_MAX_HP, TICK_HZ, canOpen, createMatch, padCellCenter, step } from '@talad/sim';
+import {
+  STALL_MAX_HP,
+  TICK_HZ,
+  canOpen,
+  createMatch,
+  controlledUnit,
+  padCellCenter,
+  step,
+} from '@talad/sim';
 import type { MatchState, SquadCommand, Team, UnitId, UnitInput, Vec2 } from '@talad/sim';
 import { AudioMixer, readSoundPreference, sfxForTick } from '../audio';
 import type { SfxKey } from '../audio';
 import { AimMarker } from '../hud/aimMarker';
+import { ClassPickHud } from '../hud/classPick';
 import { SquadCommands } from '../hud/commands';
 import { MatchHud } from '../hud/status';
+import { SwitchHud } from '../hud/switch';
 import { PreviewText } from '../hud/padPreview';
 import { PadGlow } from '../hud/padGlow';
 import { StallBars } from '../hud/stallBars';
 import { MatchTimer } from '../hud/timer';
 import { shouldRotate } from '../hud/rotatePrompt';
 import { emptyStats, tallyStats } from '../stats';
+import { classPickContext, R2Controls } from '../input/r2Controls';
 import { KeyboardInput } from '../input/keyboard';
 import { TouchControls, isTouchDevice } from '../input/touch';
 import { FixedLoop } from '../loop';
 import { MatchView } from '../render/view';
 import { stageToWorld } from '../render/world';
 import type { AudioLogEntry, TaladTestHooks } from '../testHooks';
-
-const HUMAN_UNIT: UnitId = 0;
 
 /** Static at build time: the prod bundle folds this block (and `__talad`) away. */
 const TEST_HOOKS_ENABLED = import.meta.env.VITE_TEST_HOOKS === '1';
@@ -60,6 +69,12 @@ export class MatchScene extends Phaser.Scene {
   private command: Partial<Record<Team, SquadCommand>> = {};
   private audio = new AudioMixer();
   private observeAudio: ((key: SfxKey, started: boolean) => void) | null = null;
+  /** R2 one-shot DOM requests (tray picks + switch button). */
+  private readonly r2 = new R2Controls();
+  private classPickHud: ClassPickHud | null = null;
+  private switchHud: SwitchHud | null = null;
+  /** False while paused (hidden/portrait): the transition clears action latches. */
+  private running = false;
 
   constructor() {
     super('match');
@@ -77,6 +92,7 @@ export class MatchScene extends Phaser.Scene {
     this.command = {};
     this.aim = null;
     this.fireHeld = false;
+    this.running = false;
     this.audio = new AudioMixer();
     this.audio.setMuted(!readSoundPreference());
 
@@ -93,6 +109,12 @@ export class MatchScene extends Phaser.Scene {
       document.removeEventListener('keydown', unlock, true);
       this.audio.dispose();
       this.observeAudio = null;
+      this.classPickHud?.destroy();
+      this.classPickHud = null;
+      this.switchHud?.destroy();
+      this.switchHud = null;
+      this.r2.resetForHandoff();
+      this.clearLatches();
       this.hudRoot.remove();
       this.touch?.destroy();
       this.touch = null;
@@ -114,6 +136,13 @@ export class MatchScene extends Phaser.Scene {
     });
     this.preview = new PreviewText(this.hudRoot);
     this.hud = new MatchHud(this.hudRoot);
+    // R2 screen HUD (both inputs): class tray + switch button, wired to the
+    // one-shot request queue the tick merge consumes. Their stopPropagation
+    // keeps DOM activations off the canvas weapon.
+    this.classPickHud = new ClassPickHud(this.hudRoot, (context, classId) =>
+      this.r2.queuePick(context, classId),
+    );
+    this.switchHud = new SwitchHud(this.hudRoot, () => this.r2.queueSwitch());
     this.glow = new PadGlow(this);
     this.aimMarker = new AimMarker(this);
     if (isTouchDevice()) this.touch = new TouchControls(mount);
@@ -132,9 +161,14 @@ export class MatchScene extends Phaser.Scene {
       this.fireHeld = false;
     });
     const keydown = (e: KeyboardEvent) => {
-      this.keyboard.handleKey(e.code, true);
+      // The class-choice context at keydown: digits 1-4 inside it cache a pick
+      // and are consumed by the keyboard, so they never also drive squad keys.
+      const consumed = this.keyboard.handleKey(e.code, true, classPickContext(this.state));
       const cmd = COMMAND_KEYS[e.code];
-      if (cmd && !e.repeat) this.commandsUi.request(cmd);
+      // Contextual digits win over command keys; during the controlled unit's
+      // class channel the context is null by definition, so the scene swallows
+      // the digit itself (plan §5: no choice/command collision).
+      if (cmd && !e.repeat && !consumed && !this.channelRunning()) this.commandsUi.request(cmd);
     };
     const keyup = (e: KeyboardEvent) => this.keyboard.handleKey(e.code, false);
     window.addEventListener('keydown', keydown);
@@ -196,6 +230,8 @@ export class MatchScene extends Phaser.Scene {
           this.view.sync(prev, cur, alpha);
           this.preview.sync(cur);
           this.hud.sync(cur);
+          this.classPickHud?.sync(cur);
+          this.switchHud?.sync(cur);
         },
         stats: () => structuredClone(this.stats),
         audioLog: () => structuredClone(audioLog),
@@ -275,13 +311,22 @@ export class MatchScene extends Phaser.Scene {
           }
           this.syncAll();
         },
+        /**
+         * Dev-only deterministic staging (plan R2-11): the SAME stepTick and
+         * syncAll real play uses, with explicit per-unit inputs for one tick.
+         * Exists only inside the VITE_TEST_HOOKS build — no prod mutation API.
+         */
+        stepInputs: (inputs) => {
+          this.stepTick(new Map(inputs));
+          this.syncAll();
+        },
         setCommand: (team: Team, cmd: SquadCommand) => {
           // Merge: callers park both teams one call at a time (overwriting the
           // whole map silently un-guarded the other team — review round 1 #1).
           this.command = { ...this.command, [team]: cmd };
         },
         placeUnit: (unitId: number, x: number, y: number) => {
-          const unit = this.state.units[unitId];
+          const unit = this.state.units.find((u) => u.id === unitId);
           if (!unit) return;
           unit.pos = { x, y };
           this.prevState = structuredClone(this.state);
@@ -344,24 +389,62 @@ export class MatchScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    if (document.hidden || shouldRotate()) return; // Pause without accumulating portrait time.
+    if (document.hidden || shouldRotate()) {
+      // Pause transition: clear pending action latches once so nothing replays
+      // on resume (plan §5). No fake pause of an active class choice — the sim
+      // simply does not tick.
+      if (this.running) {
+        this.running = false;
+        this.clearLatches();
+      }
+      return;
+    }
+    this.running = true;
     const ticks = this.loop.advance(delta);
     for (let i = 0; i < ticks && this.state.winner === null; i++) {
       this.stepTick(this.humanInputs());
     }
     this.syncAll(this.loop.alpha());
-    const human = this.state.units[HUMAN_UNIT];
-    this.touch?.syncUi(
-      human ? canOpen(this.state, HUMAN_UNIT) : false,
-      human?.bombs ?? 0,
-      this.state.winner !== null,
-    );
+    const controlled = controlledUnit(this.state);
+    // Touch Open! hides for class recipes: the wall opens only through an
+    // explicit class choice (tray or digit), never the ordinary button.
+    const openVisible =
+      controlled !== null &&
+      controlled.deadUntilTick === null &&
+      canOpen(this.state, controlled.id) &&
+      classPickContext(this.state) === null;
+    this.touch?.syncUi(openVisible, controlled?.bombs ?? 0, this.state.winner !== null);
+  }
+
+  /** True while the controlled unit's own class channel runs (digits swallowed). */
+  private channelRunning(): boolean {
+    const unit = controlledUnit(this.state);
+    if (unit === null) return false;
+    const opening = this.state.pads[unit.team].opening;
+    return opening !== null && opening.byUnit === unit.id && opening.classId !== undefined;
+  }
+
+  /**
+   * Client reset of every input latch: on an actual controlSwitched, on the
+   * pause transition and on shutdown (plan §2.4/§5). Physically-held keys stay
+   * suppressed until re-pressed; the mouse latch and queued one-shots drop.
+   */
+  private clearLatches(): void {
+    this.keyboard.resetForHandoff();
+    this.touch?.resetForHandoff();
+    this.r2.resetForHandoff();
+    this.fireHeld = false;
+    this.aim = null;
   }
 
   private stepTick(inputs: ReadonlyMap<UnitId, UnitInput>): void {
     this.prevState = this.state;
     this.state = step(this.state, inputs, this.command);
     this.stats = tallyStats(this.stats, this.prevState, this.state);
+    // Actual handoff: clear every latch so held fire/WASD/joystick and queued
+    // one-shots never leak into the new body (the sim itself idles both bodies
+    // for the handoff tick; the client must not add more on top).
+    if (this.state.events.some((e) => e.kind === 'controlSwitched')) this.clearLatches();
     this.playTickAudio();
   }
 
@@ -384,6 +467,8 @@ export class MatchScene extends Phaser.Scene {
     this.glow.sync(this.state);
     this.aimMarker.sync(this.state);
     this.hud.sync(this.state);
+    this.classPickHud?.sync(this.state);
+    this.switchHud?.sync(this.state);
     if (this.state.winner !== null && this.resultsTimer === null) {
       // Banner/jingle duration is wall time, not Phaser's smoothed scene delta
       // (initial slow frames can stretch a scene-clock second to many seconds).
@@ -397,29 +482,32 @@ export class MatchScene extends Phaser.Scene {
     }
   }
 
-  /** The human unit's merged keyboard + touch input for one tick. */
+  /**
+   * The controlled unit's merged input for one tick: keyboard + touch + R2
+   * one-shots, read EVERY tick including while the controlled body is dead so
+   * pulses never buffer for its respawn. Ownership is body-derived
+   * (controlledUnit, lowest-ID non-bot, alive or dead); the sim ignores every
+   * action of a dead body but keeps honoring its switchNext. R2 one-shots win
+   * over the ordinary keys (a validated tray pick carries its own open:true).
+   */
   private humanInputs(): ReadonlyMap<UnitId, UnitInput> {
-    const human = this.state.units[HUMAN_UNIT];
-    if (!human || human.deadUntilTick !== null) return new Map();
-    const k = this.keyboard.read(this.state, HUMAN_UNIT, {
+    const unit = controlledUnit(this.state);
+    if (unit === null) return new Map();
+    const k = this.keyboard.read(this.state, unit.id, {
       fire: this.fireHeld,
       aim: this.aim,
     });
-    const t = this.touch?.read();
-    if (!t) return new Map([[HUMAN_UNIT, k]]);
-    const move = t.move.x !== 0 || t.move.y !== 0 ? t.move : k.move;
-    return new Map([
-      [
-        HUMAN_UNIT,
-        {
-          move,
-          aim: k.aim, // desktop mouse aim; touch relies on sim auto-aim
-          fire: k.fire || t.fire,
-          throwBomb: k.throwBomb || t.throwBomb,
-          pickDrop: k.pickDrop || t.pickDrop,
-          open: k.open || t.open,
-        },
-      ],
-    ]);
+    const t = this.touch?.read() ?? null;
+    const r2 = this.r2.read(this.state);
+    const merged: UnitInput = {
+      ...k,
+      move: t !== null && (t.move.x !== 0 || t.move.y !== 0) ? t.move : k.move,
+      fire: k.fire || (t?.fire ?? false),
+      throwBomb: k.throwBomb || (t?.throwBomb ?? false),
+      pickDrop: k.pickDrop || (t?.pickDrop ?? false),
+      open: k.open || (t?.open ?? false),
+      ...r2, // validated classPick (with open:true) and/or switchNext
+    };
+    return new Map([[unit.id, merged]]);
   }
 }

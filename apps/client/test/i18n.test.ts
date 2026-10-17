@@ -87,7 +87,7 @@ describe('i18n coverage of sim unions', () => {
     ]);
   });
 
-  it('provides exact class and control state copy without choosing a switch key', () => {
+  it('provides exact class and control state copy and the approved switch-key tutorial suffix', () => {
     expect(th).toMatchObject({
       recipeClass: 'ลูกทีมอาชีพ',
       classBoxer: 'นักมวย',
@@ -101,7 +101,7 @@ describe('i18n coverage of sim unions', () => {
       controlledUnit: 'ตัวที่ควบคุม',
     });
     expect(th.howtoWinBody).toBe(
-      'กด ยิง หรือคลิกเมาส์เพื่อโจมตี ชวนลูกทีมบุก ทำลายแผงศัตรูเพื่อชนะ',
+      'กด ยิง หรือคลิกเมาส์เพื่อโจมตี ชวนลูกทีมบุก ทำลายแผงศัตรูเพื่อชนะ กด สลับตัว หรือ R เพื่อควบคุมลูกทีมคนถัดไป',
     );
   });
 
