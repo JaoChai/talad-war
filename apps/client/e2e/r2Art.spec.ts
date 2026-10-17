@@ -233,7 +233,7 @@ test.describe('R2 class art', () => {
     expect(head1.x).toBeCloseTo(want1.x, 4);
     // Badge floats 4 px above the drawn union at 24x24.
     const badge = find(advanced, 'unit-0-badge');
-    expect(badge.texture).toBe(m.classArt.classes.healer.badge);
+    expect(badge.texture).toBe(m.classArt.classes.healer!.badge);
     expect(badge.width).toBeCloseTo(24, 4);
     expect(badge.height).toBeCloseTo(24, 4);
   });
