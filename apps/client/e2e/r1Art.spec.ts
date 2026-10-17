@@ -422,16 +422,22 @@ test.describe('R1 art', () => {
         path,
         contentType: 'image/png',
       });
-      for (let frame = 0; frame < 15; frame++) {
-        await page.evaluate(async () => {
-          for (let i = 0; i < 3; i++)
-            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      // Bound capture by real elapsed time, not a fixed number of RAFs:
+      // software-rendered CI frames can take >100ms each. The fixture still
+      // advances at the sim's 50ms tick cadence; product timing is untouched.
+      await page.evaluate(async () => {
+        const start = performance.now();
+        const startTick = window.__r1Frames.cur.tick;
+        let elapsed = 0;
+        while (elapsed < 600) {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+          elapsed = Math.min(performance.now() - start, 600);
           const cur = window.__r1Frames.cur;
           window.__r1Frames.prev = structuredClone(cur);
-          cur.tick++;
-          cur.projectiles[0]!.pos.x += 0.6;
-        });
-      }
+          cur.tick = startTick + Math.floor(elapsed / 50);
+          cur.projectiles[0]!.pos.x = 20 + (12 * elapsed) / 1000;
+        }
+      });
     }
     await page.evaluate(() => {
       const cur = window.__r1Frames.cur;
@@ -453,15 +459,20 @@ test.describe('R1 art', () => {
       cur.pads.fruit.cells[0] = [902, 903];
       window.__r1Frames.prev = structuredClone(cur);
     });
-    for (let frame = 0; frame < 60; frame++) {
-      await page.evaluate(async () => {
-        for (let i = 0; i < 3; i++)
-          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await page.evaluate(async () => {
+      const start = performance.now();
+      const startTick = window.__r1Frames.cur.tick;
+      let elapsed = 0;
+      // 30 staged ticks still take 1500ms; retain 300ms of the landed crate.
+      while (elapsed < 1800) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        elapsed = Math.min(performance.now() - start, 1800);
         const cur = window.__r1Frames.cur;
-        cur.tick++;
+        window.__r1Frames.prev = structuredClone(cur);
+        cur.tick = startTick + Math.floor(elapsed / 50);
         if (cur.tick >= cur.crates[1]!.landTick) cur.crates[1]!.state = 'ground';
-      });
-    }
+      }
+    });
     expect((await sprites(page)).find((s) => s.name === 'crate-901')!.texture).toBe('crate_super');
     const path = test.info().outputPath('super-carry-mixed-stack-landing.png');
     await page.screenshot({ path });

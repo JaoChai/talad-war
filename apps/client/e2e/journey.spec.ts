@@ -133,6 +133,9 @@ test('fresh storage: Title, skippable how-to, scored Results, replay tick zero w
   await page.getByRole('button', { name: 'หน้าแรก', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'ตลาดวอร์', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'เล่น', exact: true }).click();
+  // Play starts an asynchronous scene transition. Do not let enterMatch see
+  // the departing title and try to click its now-detaching Play button again.
+  await expect(page.locator('[data-screen="title"]')).toHaveCount(0);
   await waitHooks(page);
   await expect(page.locator('[data-screen="howto"]')).toHaveCount(0);
   await finish(page, 'draw');
