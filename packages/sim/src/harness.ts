@@ -186,6 +186,8 @@ function parseArgs(argv: string[]): CliArgs {
     const team = argv[teamIndex + 1];
     const item = argv[itemIndex + 1];
     if (
+      argv.lastIndexOf('--ban-team') !== teamIndex ||
+      argv.lastIndexOf('--ban-item') !== itemIndex ||
       teamIndex < 0 ||
       itemIndex < 0 ||
       (team !== 'fruit' && team !== 'dessert') ||

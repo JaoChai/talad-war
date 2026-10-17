@@ -278,6 +278,8 @@ describe('CLI ban validation', () => {
     ['--ban-team', 'fruit', '--ban-item', 'gun'],
     ['--ban-team', 'fruit', '--ban-item'],
     ['--ban-item', 'super', '--ban-team'],
+    ['--ban-team', 'fruit', '--ban-team', 'dessert', '--ban-item', 'boxer'],
+    ['--ban-team', 'fruit', '--ban-item', 'boxer', '--ban-item', 'healer'],
     ['--ban-item', 'class'],
     ['--ban-item', 'boxer'],
     ['--ban-team', 'dessert', '--ban-item', 'mage'],
