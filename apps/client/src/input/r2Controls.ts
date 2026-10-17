@@ -45,9 +45,13 @@ export class R2Controls {
   /**
    * Consume one-shot requests. A pick fires only if the source is still the
    * controlled unit, the wall snapshot still matches and canStartOpen still
-   * holds; stale requests are consumed without reissue. switchNext is emitted
-   * as requested — even for a dead source with a live target — and the sim
-   * no-ops it when no teammate is eligible (drain stays available, plan §2.4).
+   * holds; stale requests are consumed without reissue. A validated pick emits
+   * open:true together with the classPick (plan §2.2 shape): the sim only
+   * starts the channel when input.open && canStartOpen (sim step.ts), so the
+   * scene merge {...keyboard, ...tray} opens with no second sim API.
+   * switchNext is emitted as requested — even for a dead source with a live
+   * target — and the sim no-ops it when no teammate is eligible (drain stays
+   * available, plan §2.4).
    */
   read(s: MatchState): Partial<UnitInput> {
     const out: Partial<UnitInput> = {};
@@ -63,6 +67,7 @@ export class R2Controls {
         canStartOpen(s, pick.context.unitId, classPick)
       ) {
         out.classPick = classPick;
+        out.open = true;
       }
     }
     if (this.switchQueued) {

@@ -113,12 +113,14 @@ export class KeyboardInput {
     // opens: the wall opens only with an explicit class choice (plan §2.2).
     const wall = classWallSnapshot(state, unitId);
     const openable = wall === null && canOpen(state, unitId);
-    const open = wantsE && openable;
 
     // A cached digit pick fires exactly once, only for its cached source unit,
     // and only if the wall still validates (alive, empty-handed, on pad,
     // allowed class, unchanged snapshot — sim canStartOpen). Stale picks are
-    // consumed without reissue.
+    // consumed without reissue. A validated pick emits open:true together with
+    // the classPick (plan §2.2 shape): the sim only starts the channel when
+    // input.open && canStartOpen (sim step.ts), so the pick must carry the
+    // open itself. E alone on a class wall still never opens.
     const pending = this.pendingPick;
     this.pendingPick = null;
     let classPick: ClassPick | undefined;
@@ -136,7 +138,7 @@ export class KeyboardInput {
       fire: opts?.fire ?? false,
       throwBomb: wantsQ,
       pickDrop: wantsE && wall === null && !openable,
-      open,
+      open: (wantsE && openable) || classPick !== undefined,
       ...(classPick !== undefined ? { classPick } : {}),
       ...(wantsSwitch ? { switchNext: true } : {}),
     };
