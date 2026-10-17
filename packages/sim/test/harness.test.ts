@@ -160,7 +160,7 @@ describe('runBatch', () => {
     }
   }, 30_000);
   it('accumulates every recipe, quality and actual damage source by attacking team', () => {
-    const opts = { games: 3, seed0: 1, maxMinutes: 15 };
+    const opts = { games: 6, seed0: 1, maxMinutes: 15 };
     const expected = observe(opts);
     expect(runBatch(opts)).toMatchObject(expected);
     for (const recipe of r1Recipes)

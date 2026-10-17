@@ -4,19 +4,30 @@ import {
   ARENA_W,
   BOMB_THROW_RANGE,
   CENTER_DROP_ZONE,
+  HEALER_RADIUS,
   PICK_RADIUS,
   SLAP_RANGE,
 } from '../constants';
 import { dist2, vecClampLength, vecNormalize } from '../geometry';
 import { nearestPickableCrate } from '../crates';
-import { weaponStats } from '../items';
+import { unitMaxHp, weaponStats } from '../items';
 import type { Rect } from '../geometry';
 import { stallCenter, stallRect } from '../map';
 import { unitDead } from '../open';
 import { canOpen, matchRecipe, padCellAt, padCellCenter, padPreview, placeCrate } from '../pad';
 import type { Recipe } from '../pad';
-import type { Crate, CrateId, MatchState, Pad, Unit, UnitInput, UnitId, Vec2 } from '../types';
-import { botGoal, teamNeeds } from './squad';
+import type {
+  ClassPick,
+  Crate,
+  CrateId,
+  MatchState,
+  Pad,
+  Unit,
+  UnitInput,
+  UnitId,
+  Vec2,
+} from '../types';
+import { botGoal, chooseClass, teamNeeds } from './squad';
 
 /** Input of a dead or unknown unit — phases skip dead units anyway. */
 const IDLE_INPUT: UnitInput = Object.freeze({
@@ -57,6 +68,8 @@ interface BotPlan {
   open: boolean;
   throwBomb: boolean;
   boundedMill?: boolean;
+  classPick?: ClassPick;
+  fire?: boolean;
 }
 
 /**
@@ -69,21 +82,26 @@ interface BotPlan {
 export function botInput(s: MatchState, unitId: UnitId): UnitInput {
   const unit = s.units.find((u) => u.id === unitId);
   if (unit === undefined || unitDead(unit)) return { ...IDLE_INPUT, move: { x: 0, y: 0 } };
+  const opening = s.pads[unit.team].opening;
+  if (opening?.byUnit === unit.id && opening.classId !== undefined)
+    return { ...IDLE_INPUT, move: { x: 0, y: 0 } };
   const goal = botGoal(s, unit.id);
   const ti = teamIndexOf(s, unit);
   const plan =
-    goal === 'fetch'
+    classPlan(s, unit, goal) ??
+    (goal === 'fetch'
       ? fetchPlan(s, unit)
       : goal === 'guard'
         ? guardPlan(s, unit)
-        : attackPlan(s, unit, ti);
+        : attackPlan(s, unit, ti));
   return {
     move: steer(unit, plan, s.tick, ti),
     aim: plan.aim, // explicit stall aim when the plan wants it, else auto-aim
-    fire: autoAimTarget(s, unit.id) !== null,
+    fire: plan.fire ?? autoAimTarget(s, unit.id) !== null,
     throwBomb: plan.throwBomb,
     pickDrop: plan.pickDrop,
     open: plan.open,
+    ...(plan.classPick === undefined ? {} : { classPick: plan.classPick }),
   };
 }
 
@@ -95,6 +113,18 @@ function teamIndexOf(s: MatchState, unit: Unit): number {
 
 function fetchPlan(s: MatchState, unit: Unit): BotPlan {
   const pad = s.pads[unit.team];
+  if (pad.opening !== null && pad.opening.byUnit !== unit.id) {
+    // Another body's channel reserves the entire wall, even if need/bans change.
+    return {
+      target: rectCenterOfPad(pad),
+      arriveRadius: 1,
+      millSpeed: 0.4,
+      aim: null,
+      pickDrop: false,
+      open: false,
+      throwBomb: false,
+    };
+  }
   if (pad.opening !== null && pad.opening.byUnit === unit.id) {
     // My own open is running: picking or placing now would change the pad
     // snapshot and cancel my own channel — hold still (mill in place).
@@ -133,10 +163,31 @@ function fetchPlan(s: MatchState, unit: Unit): BotPlan {
     return {
       target: center,
       arriveRadius: 0.3,
-      millSpeed: 0.35,
+      millSpeed: preview.recipe === 'class' ? 0 : 0.35,
       aim: null,
       pickDrop: false,
       open: canOpen(s, unit.id),
+      throwBomb: false,
+      ...(preview.recipe === 'class'
+        ? {
+            classPick: { classId: chooseClass(s, unit.team)!, snapshot: JSON.stringify(pad.cells) },
+          }
+        : {}),
+    };
+  }
+  if (needed !== 'class' && pad.cells.some((c) => c[1] !== null)) {
+    // Illegal/capped/incompatible wall: recover real upper crates with the same
+    // own-pad pick/drop path humans use. Unload cargo outside before lifting more.
+    if (unit.carrying !== null) return unloadPlan(unit, pad);
+    const order = unit.team === 'fruit' ? [0, 1, 2, 3] : [3, 2, 1, 0];
+    const col = order.find((i) => pad.cells[i]![1] !== null)!;
+    return {
+      target: padCellCenter(pad, col),
+      arriveRadius: 0.25,
+      millSpeed: 0,
+      aim: null,
+      pickDrop: padCellAt(pad, unit.pos) === col,
+      open: false,
       throwBomb: false,
     };
   }
@@ -190,6 +241,69 @@ function fetchPlan(s: MatchState, unit: Unit): BotPlan {
     open: false,
     throwBomb: false,
   };
+}
+
+function unloadPlan(unit: Unit, pad: Pad): BotPlan {
+  const center = rectCenterOfPad(pad);
+  const target = { x: center.x, y: center.y + (unit.team === 'fruit' ? -2.2 : 2.2) };
+  return {
+    target,
+    arriveRadius: 0.15,
+    millSpeed: 0,
+    aim: null,
+    pickDrop: dist2(unit.pos, target) <= 0.2 * 0.2,
+    open: false,
+    throwBomb: false,
+  };
+}
+
+/** Bounded class tactics; explicit guard/fetch still use their normal plans. */
+function classPlan(s: MatchState, unit: Unit, goal: ReturnType<typeof botGoal>): BotPlan | null {
+  if (goal !== 'attack') return null;
+  if (unit.classId === 'healer' && s.commands[unit.team] === null) {
+    const ally = s.units
+      .filter(
+        (u) => u.team === unit.team && u.id !== unit.id && !unitDead(u) && u.hp < unitMaxHp(u),
+      )
+      .sort(
+        (a, b) =>
+          a.hp / unitMaxHp(a) - b.hp / unitMaxHp(b) ||
+          dist2(unit.pos, a.pos) - dist2(unit.pos, b.pos) ||
+          a.id - b.id,
+      )[0];
+    if (ally !== undefined)
+      return {
+        target: { ...ally.pos },
+        arriveRadius: HEALER_RADIUS,
+        millSpeed: 0,
+        aim: null,
+        pickDrop: false,
+        open: false,
+        throwBomb: false,
+      };
+  }
+  if (unit.classId === 'ninja' && unit.gun === null && unit.carrying === null) {
+    const pad = s.pads[unit.team === 'fruit' ? 'dessert' : 'fruit'];
+    // Resolve distance ties in canonical order so a rotation cannot pick another column.
+    const order = unit.team === 'fruit' ? [0, 1, 2, 3] : [3, 2, 1, 0];
+    const col = order
+      .filter((i) => pad.cells[i]!.some((c) => c !== null))
+      .sort(
+        (a, b) => dist2(unit.pos, padCellCenter(pad, a)) - dist2(unit.pos, padCellCenter(pad, b)),
+      )[0];
+    if (col !== undefined)
+      return {
+        target: padCellCenter(pad, col),
+        arriveRadius: 0.25,
+        millSpeed: 0,
+        aim: null,
+        fire: padCellAt(pad, unit.pos) === col,
+        pickDrop: false,
+        open: false,
+        throwBomb: false,
+      };
+  }
+  return null;
 }
 
 /** A guard engages enemies that push its stall closer than this to the stall centre. */
@@ -380,6 +494,7 @@ function steer(unit: Unit, plan: BotPlan, tick: number, ti: number): Vec2 {
       y: to.y / d + (to.x / d) * 0.45 * sign,
     });
   }
+  if (plan.millSpeed === 0) return { x: 0, y: 0 };
   const mill = MILL_DIRS[
     (Math.floor(tick / MILL_TICKS) + ti * 3 + (unit.team === 'dessert' ? 4 : 0)) % MILL_DIRS.length
   ] ?? { x: 0, y: 0 };
@@ -462,6 +577,24 @@ function choosePadColumn(pad: Pad, needed: Recipe): number | null {
     };
     const col = choosePadColumn(canonical, needed);
     return col === null ? null : pad.cells.length - 1 - col;
+  }
+  if (needed === 'class') {
+    const pair = [
+      [0, 1],
+      [0, 2],
+      [1, 3],
+      [2, 3],
+    ].find((p) =>
+      pad.cells.every(
+        (c, i) =>
+          (p.includes(i) || c.every((id) => id === null)) && (c[1] === null || c[0] !== null),
+      ),
+    );
+    if (pair === undefined) return null;
+    // Complete the floor before either upper: never stray into a third column.
+    for (const layer of [0, 1])
+      for (const col of pair) if (pad.cells[col]![layer] === null) return col;
+    return null;
   }
   let total = 0;
   const candidates: number[] = [];

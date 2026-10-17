@@ -51,6 +51,7 @@ describe('R1 bot decisions and natural traffic', () => {
   it('needs_gun_then_buddy_with_bombs_then_heavy_with_supply_then_bombs', () => {
     for (const team of teams) {
       const s = createMatch(1, { humanUnit: null });
+      s.itemBans = { [team]: ['class'] }; // isolate the retained R1 priority ladder
       expect(teamNeeds(s, team)).toBe('gun');
       const u = armed(s, team);
       expect(teamNeeds(s, team)).toBe('bombs');
@@ -111,11 +112,11 @@ describe('R1 bot decisions and natural traffic', () => {
       armed(s, team);
       grow(s, team, 4);
       supply(s, BOT_HEAVY_MIN_SUPPLY);
-      s.itemBans = { [team]: ['heavy'] };
+      s.itemBans = { [team]: ['heavy', 'class'] }; // R2 class demand tested separately
       expect(teamNeeds(s, team)).toBe('bombs');
       floor(s, team, 3);
       expect(teamNeeds(s, team)).not.toBe('heavy');
-      s.itemBans = { [team]: ['super'] };
+      s.itemBans = { [team]: ['super', 'class'] };
       expect(teamNeeds(s, team)).toBe('heavy');
     }
   });
@@ -213,6 +214,7 @@ describe('R1 bot decisions and natural traffic', () => {
   it('heavy_places_4_floor_cells_never_upper_or_premature_open', () => {
     for (const team of teams) {
       let s = createMatch(1, { humanUnit: null });
+      s.itemBans = { [team]: ['class'] }; // class wall wins with this supply otherwise
       const u = armed(s, team);
       grow(s, team, 4);
       // Isolate actual bot placement/opening from combat and other builders.

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  HEALER_RADIUS,
   PAD_ORIGINS,
+  unitMaxHp,
+  updateClassHealing,
   STALL_MAX_HP,
   UNIT_SPEED,
   botGoal,
@@ -45,6 +48,137 @@ function distFromStall(s: MatchState, unitId: UnitId): number {
   const center = stallCenter(unit.team);
   return Math.hypot(unit.pos.x - center.x, unit.pos.y - center.y);
 }
+
+type StuckRefs = Map<UnitId, { pos: Vec2; since: number }>;
+
+// Infer real phase-7 healing independently from HP and damage events. Net HP
+// alone misses healing on a combat tick; death/respawn must never count as a heal.
+function supportedAllyWasHealed(before: MatchState, s: MatchState, unit: Unit): boolean {
+  const source = before.units.find((u) => u.id === unit.id);
+  if (
+    source === undefined ||
+    !source.isBot ||
+    !unit.isBot ||
+    source.classId !== 'healer' ||
+    source.deadUntilTick !== null ||
+    unit.deadUntilTick !== null ||
+    before.commands[source.team] !== null ||
+    botGoal(before, source.id) !== 'attack'
+  )
+    return false;
+  const distance2 = (a: Unit, b: Unit) => (a.pos.x - b.pos.x) ** 2 + (a.pos.y - b.pos.y) ** 2;
+  const selected = before.units
+    .filter(
+      (u) =>
+        u.team === source.team &&
+        u.id !== source.id &&
+        u.deadUntilTick === null &&
+        u.hp < unitMaxHp(u),
+    )
+    .sort(
+      (a, b) =>
+        a.hp / unitMaxHp(a) - b.hp / unitMaxHp(b) ||
+        distance2(source, a) - distance2(source, b) ||
+        a.id - b.id,
+    )[0];
+  if (selected === undefined) return false;
+  const target = s.units.find((u) => u.id === selected.id);
+  if (
+    target === undefined ||
+    target.deadUntilTick !== null ||
+    distance2(unit, target) > HEALER_RADIUS ** 2 ||
+    s.events.some((e) => e.kind === 'death' && (e.unitId === unit.id || e.unitId === target.id))
+  )
+    return false;
+  const damage = s.events.reduce(
+    (sum, e) => (e.kind === 'hit' && e.target === target.id ? sum + (e.dmg as number) : sum),
+    0,
+  );
+  const preHealHp = selected.hp - damage;
+  return preHealHp > 0 && preHealHp < unitMaxHp(target) && target.hp > preHealHp;
+}
+
+// Test-only observer: the original position thresholds and exemptions stay intact.
+function checkStuck(before: MatchState, s: MatchState, refs: StuckRefs, t: number, seed: number) {
+  for (const unit of s.units) {
+    const goal = botGoal(s, unit.id);
+    const opening = s.pads[unit.team].opening?.byUnit === unit.id;
+    if (
+      unit.deadUntilTick !== null ||
+      goal === 'guard' ||
+      opening ||
+      supportedAllyWasHealed(before, s, unit)
+    ) {
+      refs.delete(unit.id);
+      continue;
+    }
+    const ref = refs.get(unit.id);
+    if (ref === undefined || Math.hypot(unit.pos.x - ref.pos.x, unit.pos.y - ref.pos.y) > 0.1) {
+      refs.set(unit.id, { pos: { ...unit.pos }, since: t });
+    } else if (t - ref.since > 100) {
+      throw new Error(
+        `seed ${seed}: bot ${unit.id} (${goal}) stuck at ` +
+          `(${unit.pos.x.toFixed(2)},${unit.pos.y.toFixed(2)}) ticks ${ref.since}-${t}`,
+      );
+    }
+  }
+}
+
+describe('never-stuck Healer exemption boundaries', () => {
+  function observe(mode: string) {
+    let s = createMatch(1);
+    const healer = must(s.units.find((u) => u.id === 2));
+    healer.classId = 'healer';
+    healer.pos = { x: 20, y: 12 };
+    const ally = must(s.units[0]);
+    const extra = must(s.units[1]);
+    // Keep id1 as guard by adding a lower-ID bot; helper only checks healer2.
+    const lower = { ...structuredClone(extra), id: -1 };
+    s.units.unshift(lower);
+    for (const u of s.units) if (u.id !== healer.id) u.pos = { x: 4, y: 4 };
+    ally.pos = { x: 20 + HEALER_RADIUS, y: 12 };
+    ally.hp = mode === 'healthy' ? unitMaxHp(ally) : 10;
+    if (mode === 'out-of-range') ally.pos.x += 0.01;
+    if (mode === 'dead') ally.deadUntilTick = 9999;
+    if (mode === 'non-selected') {
+      extra.hp = 1;
+      extra.pos = { x: 4, y: 4 };
+    }
+    if (mode === 'commanded') s.commands.fruit = 'attack';
+    if (mode === 'non-healer') healer.classId = 'boxer';
+    const refs: StuckRefs = new Map();
+    for (let t = 0; t <= 102; t++) {
+      const before = structuredClone(s);
+      s = structuredClone(s);
+      s.tick++;
+      s.events = [];
+      // Real healing phase, no fabricated healing events or HP increments.
+      if (mode !== 'no-heal') updateClassHealing(s);
+      // Preserve squad context while retaining position history only for healer2.
+      const onlyHealer = new Map(refs);
+      checkStuck(before, s, onlyHealer, t, 1);
+      refs.clear();
+      const ref = onlyHealer.get(healer.id);
+      if (ref !== undefined) refs.set(healer.id, ref);
+    }
+  }
+
+  it('permits stationary autonomous support only while actual healing is applied', () => {
+    expect(() => observe('healing')).not.toThrow();
+  });
+
+  it.each([
+    'out-of-range',
+    'healthy',
+    'dead',
+    'non-selected',
+    'commanded',
+    'non-healer',
+    'no-heal',
+  ])('%s remains stuck after more than 100 stationary ticks', (mode) => {
+    expect(() => observe(mode)).toThrow(/bot 2 .*stuck.*ticks 0-101/);
+  });
+});
 
 describe('bots: squad commands (plan Task 5)', () => {
   it('fetch: a lone bot turns one crate at (20,12) into a gun for its team within 30 s', () => {
@@ -108,29 +242,11 @@ describe('bots: squad commands (plan Task 5)', () => {
   it('never stuck: 20 seeds x 2 min, no alive non-guarding/non-opening bot keeps the same position (+-0.1) for more than 5 s', () => {
     for (let seed = 0; seed < 20; seed++) {
       let s = createMatch(seed, { humanUnit: null });
-      const refs = new Map<UnitId, { pos: Vec2; since: number }>();
+      const refs: StuckRefs = new Map();
       for (let t = 0; t < 2400 && s.winner === null; t++) {
+        const before = s;
         s = step(s, new Map());
-        for (const unit of s.units) {
-          const goal = botGoal(s, unit.id);
-          const opening = s.pads[unit.team].opening?.byUnit === unit.id;
-          if (unit.deadUntilTick !== null || goal === 'guard' || opening) {
-            refs.delete(unit.id);
-            continue;
-          }
-          const ref = refs.get(unit.id);
-          if (
-            ref === undefined ||
-            Math.hypot(unit.pos.x - ref.pos.x, unit.pos.y - ref.pos.y) > 0.1
-          ) {
-            refs.set(unit.id, { pos: { ...unit.pos }, since: t });
-          } else if (t - ref.since > 100) {
-            throw new Error(
-              `seed ${seed}: bot ${unit.id} (${goal}) stuck at ` +
-                `(${unit.pos.x.toFixed(2)},${unit.pos.y.toFixed(2)}) ticks ${ref.since}-${t}`,
-            );
-          }
-        }
+        checkStuck(before, s, refs, t, seed);
       }
     }
   }, 600_000);
