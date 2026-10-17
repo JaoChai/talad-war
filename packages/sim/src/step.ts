@@ -1,4 +1,5 @@
 import { ARENA_H, ARENA_W, DT, UNIT_RADIUS } from './constants';
+import { updateClassHealing } from './classes';
 import { unitMoveSpeed } from './items';
 import { botInput } from './bots/brain';
 import { updateProjectiles, processAttacks, updateRespawns, updateWinner } from './combat';
@@ -125,6 +126,9 @@ export function step(
   // motion. Freshly spawned projectiles first act on the next tick.
   const freshProjectiles = processAttacks(next, effective);
   updateProjectiles(next, freshProjectiles);
+
+  // Simultaneous class healing sees projectile deaths, but not phase-8 respawns.
+  updateClassHealing(next);
 
   // Phase 8: respawn — heal the dead back at their stall once deadUntilTick arrives.
   updateRespawns(next);
