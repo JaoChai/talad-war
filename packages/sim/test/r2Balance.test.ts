@@ -19,7 +19,7 @@ it('pins the measured R2-only numeric table for reproducible balance runs', () =
     HEALER_MAX_HP: 100,
     HEALER_SPEED_MULT: 1,
     HEALER_RADIUS: 3.25,
-    HEALER_AURA_HP_PER_SEC: 4,
+    HEALER_AURA_HP_PER_SEC: 3.4,
     HEALER_SELF_HP_PER_SEC: 2,
     NINJA_MAX_HP: 75,
     NINJA_SPEED_MULT: 1.35,
