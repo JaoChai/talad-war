@@ -399,6 +399,10 @@ export class MatchScene extends Phaser.Scene {
       }
       return;
     }
+    // Resume edge: the pause froze the sim but DOM controls could still queue
+    // requests while paused; drop them so nothing replays on resume (§5 — the
+    // portrait spec pins a queued pick that was tapped while paused).
+    if (!this.running) this.clearLatches();
     this.running = true;
     const ticks = this.loop.advance(delta);
     for (let i = 0; i < ticks && this.state.winner === null; i++) {

@@ -195,19 +195,11 @@ test('held joystick does not leak into the new body (touch)', async ({ page }, i
   await page.waitForTimeout(500);
   const walked = controlledHookUnit(await getState(page))!.pos;
   expect(Math.hypot(walked.x - mePos0.x, walked.y - mePos0.y)).toBeGreaterThan(0.5);
-  // Tap สลับตัว with the joystick still held.
-  const box = await page.locator('#tw-btn-switch').boundingBox();
-  expect(box).not.toBeNull();
-  const pt = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 };
-  await cdp.send('Input.dispatchTouchEvent', {
-    type: 'touchStart',
-    touchPoints: [{ x: pt.x, y: pt.y, id: 7 }],
-  });
-  await page.waitForTimeout(90);
-  await cdp.send('Input.dispatchTouchEvent', {
-    type: 'touchEnd',
-    touchPoints: [{ x: pt.x, y: pt.y, id: 7 }],
-  });
+  // Tap สลับตัว with the joystick still held. Playwright's tap synthesises a
+  // real trusted tap (touch → click activation); a raw CDP touchStart/touchEnd
+  // pair does not produce a click on this page (the app's touch handlers
+  // cancel default activation), so the switch would never queue.
+  await page.tap('#tw-btn-switch');
   await expect.poll(async () => controlledHookUnit(await getState(page))?.id).toBe(1);
   const newBody = controlledHookUnit(await getState(page))!;
   await page.waitForTimeout(600); // joystick still held by pointer 1
@@ -285,15 +277,39 @@ test('no living teammate: switch visible but disabled with the Thai description'
 }) => {
   await page.goto('/?seed=1');
   await enterMatch(page);
-  const staged = await stageUntil(page, (s) => {
-    const c = controlledHookUnit(s);
-    return (
-      c !== null &&
-      c.deadUntilTick === null &&
-      !s.units.some((u) => u.team === 'fruit' && u.id !== c.id && u.deadUntilTick === null)
-    );
-  });
-  expect(staged.winner).toBeNull();
+  // Deterministic staging: re-place both fruit teammates on dessert guard
+  // posts every 15-tick chunk so SLAP_RANGE adjacency is sustained and both
+  // die in the same combat window. A guard bot walks home after a single
+  // teleport of a teammate (measured), so the re-place loop is what makes
+  // the staging stick. RESPAWN_TICKS=100 bounds the "no living teammate"
+  // window; the probe below runs immediately inside it.
+  let staged: HookState | null = null;
+  for (let i = 0; i < 120 && staged === null; i++) {
+    await page.evaluate(() => {
+      const s = window.__talad.state();
+      window.__talad.setCommand('fruit', 'guard');
+      window.__talad.setCommand('dessert', 'guard');
+      // Pool-based posts: patrol and mutual combat can kill or move a fixed
+      // bot, so each victim re-docks on a LIVING dessert bot every chunk.
+      const bots = s.units.filter((u) => u.team === 'dessert' && u.deadUntilTick === null);
+      for (let id = 1; id <= 2; id++) {
+        const u = s.units.find((x) => x.id === id);
+        const bot = bots.length > 0 ? bots[(id - 1) % bots.length] : undefined;
+        if (!u || !bot || u.deadUntilTick !== null) continue;
+        window.__talad.placeUnit(id, bot.pos.x, bot.pos.y);
+      }
+    });
+    await page.evaluate(() => window.__talad.fastForward(10));
+    const s = await getState(page);
+    if (
+      s.winner !== null ||
+      !s.units.some((u) => u.team === 'fruit' && u.id !== 0 && u.deadUntilTick === null)
+    ) {
+      staged = s;
+    }
+  }
+  expect(staged, 'both fruit teammates died in the staged combat').not.toBeNull();
+  expect(staged!.winner).toBeNull();
   // One atomic read: the state window (every teammate dead) and the button.
   const probe = await page.evaluate(() => {
     const st = window.__talad.state();
@@ -388,17 +404,40 @@ test('journey: recruit a super class, switch to it, use its ability, die, respaw
     .toBeGreaterThanOrEqual(0);
   await page.mouse.up();
   expect(enemy.hp).toBeLessThanOrEqual(enemyHp0);
-  // Death: park dessert bots on attack and put the boxer at their stall.
+  // Death: park the CONTROLLED boxer on a dessert guard post. The post's bot
+  // holds position (guard), so SLAP_RANGE adjacency is sustained and it slaps
+  // the idle boxer down; the boxer never fights back and no team pushes a
+  // stall, so the match cannot end while we wait. Parking dessert on attack
+  // (the first attempt) walked every bot away from the boxer and nobody died
+  // (measured). One placement sticks: a controlled body idles where placed.
   await page.evaluate(
-    ({ id, x, y }) => {
-      window.__talad.setCommand('dessert', 'attack');
-      window.__talad.placeUnit(id, x, y);
+    ({ id }) => {
+      const s = window.__talad.state();
+      window.__talad.setCommand('dessert', 'guard');
+      const bot = s.units.find(
+        (u) => u.team === 'dessert' && u.deadUntilTick === null && u.id !== 0,
+      )!;
+      window.__talad.placeUnit(id, bot.pos.x, bot.pos.y);
     },
-    { id: boxerId, x: 35 + 3, y: 4 + 2 },
+    { id: boxerId },
   );
   let dead = false;
-  for (let i = 0; i < 12 && !dead; i++) {
-    await page.evaluate(() => window.__talad.fastForward(300));
+  for (let i = 0; i < 40 && !dead; i++) {
+    // Re-place each chunk: the guard bot patrols its post (~±1.5 units,
+    // measured), so a single placement drifts out of SLAP_RANGE after a few
+    // slaps. The controlled boxer idles, so teleporting it back onto the
+    // bot's current position keeps the slapping one-sided and sustained.
+    await page.evaluate((pid) => {
+      const s = window.__talad.state();
+      const u = s.units.find((x) => x.id === pid);
+      const bot = s.units.find(
+        (x) => x.team === 'dessert' && x.deadUntilTick === null && x.id !== 0,
+      );
+      if (u && bot && u.deadUntilTick === null) {
+        window.__talad.placeUnit(pid, bot.pos.x, bot.pos.y);
+      }
+    }, boxerId);
+    await page.evaluate(() => window.__talad.fastForward(15));
     st = await getState(page);
     if (st.winner !== null) break;
     dead = st.units.find((u) => u.id === boxerId)!.deadUntilTick !== null;

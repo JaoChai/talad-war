@@ -150,8 +150,13 @@ test('667×320: narrow tray (280px), 60×72 buttons and ≥8 px clearance to Pic
   const trayBox = byName.get('tray');
   expect(pickBtn, 'Pick button present at 667×320').toBeDefined();
   expect(trayBox).toBeDefined();
-  const gap = Math.max(trayBox!.y - pickBtn!.bottom, pickBtn!.y - trayBox!.bottom);
-  expect(gap, 'tray↔Pick vertical clearance ≥8px').toBeGreaterThanOrEqual(8);
+  // §5: the narrow tray must clear the existing Pick button by ≥8px — the
+  // nearest-edge distance across both axes (the boxes are already disjoint).
+  // At 667px the clearance is horizontal: Pick is ~90px wide with its Thai
+  // label, wider than the 64px min-width the plan's numbers assumed.
+  const gapX = Math.max(trayBox!.x - pickBtn!.right, pickBtn!.x - trayBox!.right);
+  const gapY = Math.max(trayBox!.y - pickBtn!.bottom, pickBtn!.y - trayBox!.bottom);
+  expect(Math.max(gapX, gapY), 'tray↔Pick clearance ≥8px').toBeGreaterThanOrEqual(8);
 });
 
 test('1280×800 desktop: switch visible (not hidden by the touch rule) and no overlaps', async ({

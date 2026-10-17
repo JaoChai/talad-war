@@ -212,12 +212,17 @@ test('a canvas press near the pad fires; a tray-button press never does', async 
   const pt = { x: (40 + me.pos.x * 30) * k, y: me.pos.y * 30 * k };
   // Sanity: a real canvas press makes the controlled body attack (the enemy
   // sits inside slap range; a stray step cannot leave it within one tick).
-  await canvas.click({ position: pt });
+  // Hold the press through the attack window: an instant click can be
+  // released between sim ticks, before any tick samples the held fire
+  // (the journey spec's held mouse.down is what made its attack register).
+  await page.mouse.move(pt.x, pt.y);
+  await page.mouse.down();
   await expect
     .poll(async () => page.evaluate(() => window.__talad.unitFeedback(0).attackAt), {
       timeout: 2_000,
     })
     .toBeGreaterThanOrEqual(0);
+  await page.mouse.up();
   // Now the tray: picking through the DOM must not also fire the weapon.
   const before = await page.evaluate(() => window.__talad.unitFeedback(0).attackAt);
   await trayButtons(page).nth(2).click(); // นินจา
