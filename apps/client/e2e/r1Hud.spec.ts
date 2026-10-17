@@ -1,3 +1,4 @@
+import { setTimeout as hostDelay } from 'node:timers/promises';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import type { CrateKind, MatchState } from '@talad/sim';
@@ -7,12 +8,47 @@ import { waitHooks } from './helpers';
 type Entry = { col: number; layer: 0 | 1; kind?: CrateKind };
 const star = 'img[src$="prop_badge_super.webp"]';
 
+async function pauseClock(page: Page) {
+  // Freeze the wall-clock target before the pause RPC: driver delays cannot
+  // make it the past. Restore advancing Date semantics only once timers stop.
+  const now = await page.evaluate(() => Date.now());
+  await page.clock.setFixedTime(now);
+  await page.clock.pauseAt(now);
+  await page.clock.setSystemTime(now);
+}
+
 async function start(page: Page) {
   await page.clock.install();
+  await pauseClock(page);
   await page.goto('/?seed=7');
   await expect(page.locator('.tw-loadout, .tw-preview')).toHaveCount(0);
+  await expect(page).toHaveTitle('Talad War');
+  // Boot and scene transitions need RAFs, but no uncontrolled running clock.
+  await expect
+    .poll(async () => {
+      await page.clock.runFor(50);
+      return page.locator('[data-screen="title"]').count();
+    })
+    .toBe(1);
+  await page.getByRole('button', { name: 'เล่น', exact: true }).click();
+  await expect
+    .poll(async () => {
+      await page.clock.runFor(50);
+      return page.evaluate(
+        () =>
+          window.__talad !== undefined || document.querySelector('[data-screen="howto"]') !== null,
+      );
+    })
+    .toBe(true);
+  if (await page.locator('[data-screen="howto"]').count())
+    await page.getByRole('button', { name: 'ข้าม', exact: true }).click();
+  await expect
+    .poll(async () => {
+      await page.clock.runFor(50);
+      return page.evaluate(() => window.__talad !== undefined);
+    })
+    .toBe(true);
   await waitHooks(page); // Exact title, not just HTTP200 on the shared preview port.
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 200));
   await page.evaluate(async () => {
     await document.fonts.ready;
     window.__talad.setSeed(7);
@@ -114,6 +150,37 @@ async function geometry(page: Page) {
 }
 
 test.describe('R1 HUD', () => {
+  test('clock control survives delayed pause RPC and holds simulation until explicitly advanced', async ({
+    page,
+  }, info) => {
+    // Fault injection, not synchronization: retain the real clock API, but make
+    // every pause command arrive after the old 200ms deadline would expire.
+    const pauseAt = page.clock.pauseAt.bind(page.clock);
+    page.clock.pauseAt = async (time) => {
+      await hostDelay(350);
+      await pauseAt(time);
+    };
+    await start(page);
+    for (const phase of ['boot', 'after resume']) {
+      if (phase === 'after resume') {
+        await page.clock.resume();
+        await pauseClock(page);
+      }
+      const snapshot = () =>
+        page.evaluate(() => ({
+          time: Date.now(),
+          frame: performance.now(),
+          tick: window.__talad.state().tick,
+        }));
+      const before = await snapshot();
+      await hostDelay(350);
+      expect(await snapshot(), phase).toEqual(before);
+    }
+    await stage(page, [{ col: 0, layer: 0, kind: 'super' }]);
+    await open(page, info.project.name === 'mobile-landscape');
+    await expect(page.locator('.tw-item-primary')).toHaveText('ปืนฉีดน้ำ พิเศษ');
+  });
+
   test('real Open and fire craft super heavy, replace with normal gun, refill independent bombs', async ({
     page,
   }, info) => {
@@ -177,7 +244,17 @@ test.describe('R1 HUD', () => {
     for (let i = 0; i < 5; i++) {
       if (touch) await page.locator('#tw-btn-throw').tap();
       else await page.keyboard.press('KeyQ');
-      await page.clock.runFor(50);
+      // A 50ms clock slice can contain fewer than 50ms of smoothed Phaser
+      // updates. Wait for this pulse to be consumed before sending the next.
+      await expect
+        .poll(
+          async () => {
+            await page.clock.runFor(50);
+            return page.evaluate(() => window.__talad.state().units[0]!.bombs);
+          },
+          { intervals: [0] },
+        )
+        .toBe(4 - i);
     }
     expect(await page.evaluate(() => window.__talad.state().units[0]!.bombs)).toBe(0);
     await expect(page.locator('.tw-item-bombs')).toHaveCount(0);
@@ -375,7 +452,7 @@ test.describe('R1 HUD', () => {
     const serious = axe.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
     console.log('R1 HUD axe serious/critical:', serious.length);
     expect(serious).toEqual([]);
-    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 100));
+    await pauseClock(page);
     s.pads.fruit.cells[3]![0] = s.nextId++;
     await render(s);
     await expect(page.locator('.tw-preview')).toHaveText('ยังไม่ใช่สูตร');
