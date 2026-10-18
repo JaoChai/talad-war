@@ -6,6 +6,7 @@ import {
   joyDriver,
   finishOpening,
   stepRealInputs,
+  holdSceneTicks,
 } from './helpers';
 import type { HookState, HookUnit } from './helpers';
 
@@ -75,7 +76,7 @@ async function loadoutLabel(page: Page): Promise<string> {
 test('R hands off control and the released body becomes a bot', async ({ page }) => {
   await page.goto('/?seed=1');
   await enterMatch(page);
-  await stepRealInputs(page, 0); // discover before any live one-shot/channel
+  await holdSceneTicks(page); // fixture clock, before staging/activation
   const before = await getState(page);
   const from = controlledHookUnit(before)!;
   expect(from.id).toBe(0);
@@ -91,7 +92,7 @@ test('R hands off control and the released body becomes a bot', async ({ page })
 test('the สลับตัว button hands off the same way', async ({ page }) => {
   await page.goto('/?seed=1');
   await enterMatch(page);
-  await stepRealInputs(page, 0); // discover before any live one-shot/channel
+  await holdSceneTicks(page); // fixture clock, before staging/activation
   const from = controlledHookUnit(await getState(page))!;
   await switchButton(page).click();
   const after = await stepRealInputs(page, 1);
@@ -103,7 +104,7 @@ test('the สลับตัว button hands off the same way', async ({ page })
 test('loadout and the white ring bind to the new body, not the released one', async ({ page }) => {
   await page.goto('/?seed=1');
   await enterMatch(page);
-  await stepRealInputs(page, 0); // discover before any live one-shot/channel
+  await holdSceneTicks(page); // fixture clock, before staging/activation
   // Give the controlled body a real loadout difference: recruit a bombs pair? No —
   // real bombs belong to the opener; stage a bomb wall and open it with E.
   await page.evaluate(() => {
@@ -143,7 +144,7 @@ test('held fire and WASD do not leak into the new body (desktop)', async ({ page
   test.skip(info.project.name === 'mobile-landscape', 'desktop keyboard/mouse variant');
   await page.goto('/?seed=1');
   await enterMatch(page);
-  await stepRealInputs(page, 0); // discover before any live one-shot/channel
+  await holdSceneTicks(page); // fixture clock, before staging/activation
   await page.evaluate(() => {
     window.__talad.setCommand('fruit', 'attack');
     for (const id of [1, 2]) {
@@ -214,7 +215,7 @@ test('held joystick does not leak into the new body (touch)', async ({ page }, i
   const driver = await joyDriver(page, cdp);
   await page.goto('/?seed=1');
   await enterMatch(page);
-  await stepRealInputs(page, 0); // discover before any live one-shot/channel
+  await holdSceneTicks(page); // fixture clock, before staging/activation
   const mePos0 = controlledHookUnit(await getState(page))!.pos;
   await driver.steer(1, 0); // hold the joystick right
   const walked = controlledHookUnit(await stepRealInputs(page, 10))!.pos;
@@ -242,7 +243,7 @@ test('held joystick does not leak into the new body (touch)', async ({ page }, i
 test('a dead controlled source switches through the R key', async ({ page }) => {
   await page.goto('/?seed=1');
   await enterMatch(page);
-  await stepRealInputs(page, 0); // discover before any live one-shot/channel
+  await holdSceneTicks(page); // fixture clock, before staging/activation
   const st = await stageUntil(page, (s) => {
     const c = controlledHookUnit(s);
     return (
@@ -267,7 +268,7 @@ test('a dead controlled source switches through the R key', async ({ page }) => 
 test('a dead controlled source switches through the button too', async ({ page }) => {
   await page.goto('/?seed=1');
   await enterMatch(page);
-  await stepRealInputs(page, 0); // discover before any live one-shot/channel
+  await holdSceneTicks(page); // fixture clock, before staging/activation
   const st = await stageUntil(page, (s) => {
     const c = controlledHookUnit(s);
     return (
@@ -291,7 +292,7 @@ test('no living teammate: switch visible but disabled with the Thai description'
 }) => {
   await page.goto('/?seed=1');
   await enterMatch(page);
-  await stepRealInputs(page, 0); // discover before any live one-shot/channel
+  await holdSceneTicks(page); // fixture clock, before staging/activation
   // The live RAF must not tick between staging, the death check and the HUD
   // probe: on CI a teammate could respawn during a protocol round trip.
   const probe = await page.evaluate(() => {
@@ -358,7 +359,7 @@ test('journey: recruit a super class, switch to it, use its ability, die, respaw
   test.setTimeout(180_000);
   await page.goto('/?seed=7');
   await enterMatch(page);
-  await stepRealInputs(page, 0); // discover before any live one-shot/channel
+  await holdSceneTicks(page); // fixture clock, before staging/activation
   // Stage the SUPER class wall (one star crate) with the body standing on it.
   // Fruit stays on its default commands: parking 'attack' made the fruit push
   // end the whole match before the boxer could die (measured in the first

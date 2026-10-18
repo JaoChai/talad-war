@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
-import { enterMatch, controlledHookUnit, getState, finishOpening, stepRealInputs } from './helpers';
+import {
+  enterMatch,
+  controlledHookUnit,
+  getState,
+  finishOpening,
+  stepRealInputs,
+  holdSceneTicks,
+} from './helpers';
 import type { HookState } from './helpers';
 import { className } from '../src/i18n/th';
 
@@ -42,9 +49,8 @@ async function stageClassWall(
 ): Promise<HookState> {
   await page.goto(`/?seed=${opts.seed ?? 1}`);
   await enterMatch(page);
-  // Discover the scene BEFORE activating a one-second channel. CDP discovery
-  // itself is slow enough to let a live channel finish before its first read.
-  await stepRealInputs(page, 0);
+  // One fixture-owned tick clock, before staging or any trusted activation.
+  await holdSceneTicks(page);
   await page.evaluate(
     ({ wall, superWall }) => {
       window.__talad.setCommand('fruit', 'attack');
@@ -337,9 +343,8 @@ test('full team: no tray, Thai ทีมเต็มแล้ว preview, and no
   test.setTimeout(120_000);
   await page.goto('/?seed=1');
   await enterMatch(page);
-  // Discover the scene BEFORE activating a one-second channel. CDP discovery
-  // itself is slow enough to let a live channel finish before its first read.
-  await stepRealInputs(page, 0);
+  // One fixture-owned tick clock, before staging or any trusted activation.
+  await holdSceneTicks(page);
   // Recruit two basic buddies through real opens (2-stack wall + E), twice.
   for (let round = 0; round < 2; round++) {
     await parkFruitBots(page);

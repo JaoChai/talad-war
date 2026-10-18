@@ -166,15 +166,36 @@ export async function stepRealInputs(
   ticks: number,
   adjacentEnemyId?: number,
 ): Promise<HookState> {
+  return realInputs(page, ticks, adjacentEnemyId);
+}
+
+/**
+ * Lead-approved fixture clock for the two real-input specs. Hold only this
+ * page's live scene accumulator; rendering, trusted events and humanInputs
+ * stay real. stepInputs/fastForward explicitly own every measured sim window.
+ * Navigation/page teardown discards the scene (and its instance-only override).
+ * Other specs and production FixedLoop/RAF are unchanged.
+ */
+export async function holdSceneTicks(page: Page): Promise<void> {
+  await realInputs(page, 0, undefined, true);
+}
+
+async function realInputs(
+  page: Page,
+  ticks: number,
+  adjacentEnemyId?: number,
+  holdLive = false,
+): Promise<HookState> {
   const cached = realInputTargets.get(page);
   const cdp = cached?.cdp ?? (await page.context().newCDPSession(page));
   const stepTarget = async (gamesId: string) => {
     const result = await cdp.send('Runtime.callFunctionOn', {
       objectId: gamesId,
-      functionDeclaration: `function(ticks, enemyId) {
+      functionDeclaration: `function(ticks, enemyId, holdLive) {
         const game = this.find(g => g.scene?.isActive('match'));
         if (!game) return null;
         const scene = game.scene.getScene('match');
+        if (holdLive) scene.loop.advance = () => 0;
         const startTick = window.__talad.state().tick;
         for (let i = 0; i < ticks; i++) {
           if (enemyId !== null) {
@@ -192,7 +213,7 @@ export async function stepRealInputs(
         }
         return state;
       }`,
-      arguments: [{ value: ticks }, { value: adjacentEnemyId ?? null }],
+      arguments: [{ value: ticks }, { value: adjacentEnemyId ?? null }, { value: holdLive }],
       returnByValue: true,
     });
     if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
