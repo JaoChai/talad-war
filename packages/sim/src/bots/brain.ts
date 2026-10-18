@@ -4,17 +4,19 @@ import {
   ARENA_W,
   BOMB_THROW_RANGE,
   CENTER_DROP_ZONE,
+  DT,
   HEALER_RADIUS,
   PAD_CELL_SIZE,
   PAD_FLOOR,
   PICK_RADIUS,
   SLAP_RANGE,
+  UNIT_RADIUS,
 } from '../constants';
-import { dist2, vecClampLength, vecNormalize } from '../geometry';
+import { clamp, dist2, vecClampLength, vecNormalize } from '../geometry';
 import { nearestPickableCrate } from '../crates';
-import { unitMaxHp, weaponStats } from '../items';
+import { unitMaxHp, unitMoveSpeed, weaponStats } from '../items';
 import type { Rect } from '../geometry';
-import { stallCenter, stallRect } from '../map';
+import { isUnitWalkable, stallCenter, stallRect } from '../map';
 import { unitDead } from '../open';
 import { canOpen, matchRecipe, padCellAt, padCellCenter, padPreview, placeCrate } from '../pad';
 import type { Recipe } from '../pad';
@@ -54,6 +56,8 @@ const MILL_DIRS: readonly Vec2[] = [
 ];
 const MILL_TICKS = 4;
 const VEER_TICKS = 40;
+/** Rotation magnitudes of the corner-escape sweep (see cornerEscapes). */
+const ESCAPE_STEEP_BIAS = 2.4;
 /**
  * Stand-off for unloading carried cargo just outside the own pad rect: half the
  * pad plus a 0.7 body gap. Was the stale v1 literal ±2.2 — the old half (1.5)
@@ -505,10 +509,20 @@ function steer(unit: Unit, plan: BotPlan, tick: number, ti: number): Vec2 {
   const d = Math.hypot(to.x, to.y);
   if (d > plan.arriveRadius) {
     const sign = (Math.floor(tick / VEER_TICKS) + ti) % 2 === 0 ? 1 : -1;
-    return vecNormalize({
+    const dir = vecNormalize({
       x: to.x / d - (to.y / d) * 0.45 * sign,
       y: to.y / d + (to.x / d) * 0.45 * sign,
     });
+    // R2b corner escape: when the body clips a wall face, both per-axis steps
+    // of the veered heading can be rejected and no rotation of the bearing
+    // ever asks for the one direction that frees it (away from the face) —
+    // the bot would stand there for the rest of the match. Sweep steeper
+    // deterministic headings until one axis moves; fall back to the veer.
+    if (stepReaches(unit, dir)) return dir;
+    for (const escape of cornerEscapes(to.x / d, to.y / d, sign)) {
+      if (stepReaches(unit, escape)) return escape;
+    }
+    return dir;
   }
   if (plan.millSpeed === 0) return { x: 0, y: 0 };
   const mill = MILL_DIRS[
@@ -523,6 +537,45 @@ function steer(unit: Unit, plan: BotPlan, tick: number, ti: number): Vec2 {
   }
   const pull = d > 1e-6 ? { x: (to.x / d) * 0.25, y: (to.y / d) * 0.25 } : { x: 0, y: 0 };
   return vecNormalize({ x: mill.x * plan.millSpeed + pull.x, y: mill.y * plan.millSpeed + pull.y });
+}
+
+/**
+ * True when the heading would actually displace the bot this tick: the same
+ * clamp + per-axis walkability test movement.ts tryAxis applies (x first, then
+ * y against the unmoved x), evaluated here so steering can see a wall wedge
+ * coming. Pure state inspection — no memory, no RNG.
+ */
+function stepReaches(unit: Unit, dir: Vec2): boolean {
+  const speed = unitMoveSpeed(unit);
+  const dx = dir.x * speed * DT;
+  const dy = dir.y * speed * DT;
+  const cx = clamp(unit.pos.x + dx, UNIT_RADIUS, ARENA_W - UNIT_RADIUS);
+  const cy = clamp(unit.pos.y + dy, UNIT_RADIUS, ARENA_H - UNIT_RADIUS);
+  return (
+    isUnitWalkable({ x: cx, y: unit.pos.y }, UNIT_RADIUS) ||
+    isUnitWalkable({ x: unit.pos.x, y: cy }, UNIT_RADIUS)
+  );
+}
+
+/**
+ * Deterministic escape headings for a wedged bot, in priority order. Every
+ * entry folds in the team sign, so dessert's sweep is the exact 180° mirror of
+ * fruit's: the steep rotations and perpendiculars come as mirrored pairs and
+ * the reverse heading is sign-free. Steeper-than-the-veer rotations (atan 2.4
+ * ≈ 67°), then both perpendiculars (90°), then straight away from the target —
+ * the direction no bearing rotation ever produces, which is exactly the one
+ * that un-wedges a face clip (measured: 22.60,20.26 against obstacle
+ * {23,18,26,20} — only a westward step frees that bot).
+ */
+function cornerEscapes(bx: number, by: number, sign: number): Vec2[] {
+  const rot = (k: number): Vec2 => vecNormalize({ x: bx - by * k * sign, y: by + bx * k * sign });
+  return [
+    rot(ESCAPE_STEEP_BIAS),
+    rot(-ESCAPE_STEEP_BIAS),
+    { x: -by * sign, y: bx * sign },
+    { x: by * sign, y: -bx * sign },
+    { x: -bx, y: -by },
+  ];
 }
 
 /**
