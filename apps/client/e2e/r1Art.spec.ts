@@ -256,8 +256,8 @@ test.describe('R1 art', () => {
       cur.pads.fruit.cells = [[910], [911], [912], [913]];
       window.__talad.renderSnapshot(cur, cur, 1);
     });
-    const origin = await page.evaluate(() =>
-      (window.__talad as unknown as TaladTestHooks).state().pads.fruit.origin,
+    const origin = await page.evaluate(
+      () => (window.__talad as unknown as TaladTestHooks).state().pads.fruit.origin,
     );
     const ss = await sprites(page);
     // Lead finding 22:11: each crate must sit on the PAINTED tile of the pad
