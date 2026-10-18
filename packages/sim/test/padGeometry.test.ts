@@ -10,7 +10,6 @@ import {
 } from '../src/constants';
 import { OBSTACLES, padRect } from '../src/map';
 import type { Rect } from '../src/geometry';
-import type { Team } from '../src/types';
 
 /**
  * R2b pad-enlargement pin (owner card t_f6b09e2f): PAD_CELL_SIZE 1.5 -> 2.2.
