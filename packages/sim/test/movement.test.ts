@@ -150,7 +150,16 @@ describe('map symmetry (180 deg rotation about the arena center)', () => {
 
   it("stalls and pads are each other's rotation", () => {
     expect(rotateRect(stallRect('fruit'))).toEqual(stallRect('dessert'));
-    expect(rotateRect(padRect('fruit'))).toEqual(padRect('dessert'));
+    // PAD_CELL_SIZE 2.2 makes the pad edges non-representable decimals, so exact
+    // toEqual is float-impossible (24 - 22.4 !== 1.6 in IEEE doubles). The 180°
+    // symmetry is still asserted per edge to 1e-10 world units — far below any
+    // gameplay-relevant distance (UNIT_RADIUS is 0.45).
+    const rotatedPad = rotateRect(padRect('fruit'));
+    const dessertPad = padRect('dessert');
+    expect(rotatedPad.minX).toBeCloseTo(dessertPad.minX, 10);
+    expect(rotatedPad.minY).toBeCloseTo(dessertPad.minY, 10);
+    expect(rotatedPad.maxX).toBeCloseTo(dessertPad.maxX, 10);
+    expect(rotatedPad.maxY).toBeCloseTo(dessertPad.maxY, 10);
     expect(rotatePoint(must(stallRect('fruit') && { x: 5, y: 20 }))).toEqual({ x: 35, y: 4 });
   });
 

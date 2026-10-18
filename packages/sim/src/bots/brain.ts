@@ -54,6 +54,14 @@ const MILL_DIRS: readonly Vec2[] = [
 ];
 const MILL_TICKS = 4;
 const VEER_TICKS = 40;
+/**
+ * Stand-off for unloading carried cargo just outside the own pad rect: half the
+ * pad plus a 0.7 body gap. Was the stale v1 literal ±2.2 — the old half (1.5)
+ * plus 0.7 — which the R2b pad growth turned into a point ON the rect edge,
+ * where pickDrop places the cargo instead of dropping it and the recovery loop
+ * corrupts the wall (crate eaten by a premature open).
+ */
+const PAD_UNLOAD_STANDOFF = (PAD_FLOOR * PAD_CELL_SIZE) / 2 + 0.7;
 
 /**
  * What one bot wants this tick: a movement target with an arrival radius, a mill
@@ -151,7 +159,10 @@ function fetchPlan(s: MatchState, unit: Unit): BotPlan {
   if (finishReady) {
     const center = rectCenterOfPad(pad);
     if (unit.carrying !== null) {
-      const unload = { x: center.x, y: center.y + (unit.team === 'fruit' ? -2.2 : 2.2) };
+      const unload = {
+        x: center.x,
+        y: center.y + (unit.team === 'fruit' ? -PAD_UNLOAD_STANDOFF : PAD_UNLOAD_STANDOFF),
+      };
       return {
         target: unload,
         arriveRadius: 0.15,
@@ -247,7 +258,10 @@ function fetchPlan(s: MatchState, unit: Unit): BotPlan {
 
 function unloadPlan(unit: Unit, pad: Pad): BotPlan {
   const center = rectCenterOfPad(pad);
-  const target = { x: center.x, y: center.y + (unit.team === 'fruit' ? -2.2 : 2.2) };
+  const target = {
+    x: center.x,
+    y: center.y + (unit.team === 'fruit' ? -PAD_UNLOAD_STANDOFF : PAD_UNLOAD_STANDOFF),
+  };
   return {
     target,
     arriveRadius: 0.15,
@@ -626,7 +640,7 @@ function choosePadColumn(pad: Pad, needed: Recipe): number | null {
 }
 
 function rectCenterOfPad(pad: Pad): Vec2 {
-  const half = 1.5; // TEMP-TOGGLE: old literal for A/B experiment
+  const half = (PAD_FLOOR * PAD_CELL_SIZE) / 2;
   return { x: pad.origin.x + half, y: pad.origin.y + half };
 }
 

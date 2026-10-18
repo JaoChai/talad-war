@@ -350,7 +350,7 @@ describe('R2 class abilities', () => {
     const ninja = s.units[0]!;
     if (condition === 'ownPad') ninja.pos = sim.padCellCenter(s.pads.fruit, 0);
     if (condition === 'emptyColumn') ninja.pos = sim.padCellCenter(s.pads.dessert, 2);
-    if (condition === 'offPad') ninja.pos = { x: 28.9999, y: 3.75 };
+    if (condition === 'offPad') ninja.pos = { x: 27.5999, y: 3.75 }; // just west of the 2.2 pad rect
     if (condition === 'gun') ninja.gun = { ammoCooldownTicks: 0 };
     if (condition === 'crate') ninja.carrying = 800;
     if (condition === 'knockCooldown') ninja.ninjaKnockReadyTick = 1;

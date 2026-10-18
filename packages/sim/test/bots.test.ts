@@ -216,6 +216,34 @@ describe('bots: squad commands (plan Task 5)', () => {
     expect(opened).toBeDefined();
   });
 
+  it('recovery: a carrying bot unloads onto the ground OFF the enlarged pad', () => {
+    // R2b: the unload stand-off must stay derived from the pad rect. With the old
+    // literal ±2.2 the point landed ON the 2.2-cell pad edge, where pickDrop
+    // places instead of dropping and the recovery loop corrupts the wall.
+    const s0 = createMatch(5, { humanUnit: null });
+    s0.units = s0.units.filter((u) => u.id === 0); // the lone fruit bot
+    must(s0.pads.fruit.cells[0])[1] = 900; // upper without lower: illegal wall -> recovery
+    s0.crates.push({ id: 900, pos: { x: 0, y: 0 }, state: 'onPad', landTick: 0 });
+    const bot = must(s0.units[0]);
+    bot.pos = { x: 10.2, y: 19 }; // on col 1, NORTH of the unload point: pulse fires inside the rect
+    bot.carrying = 101;
+    s0.crates.push({ id: 101, pos: { ...bot.pos }, state: 'carried', landTick: 0 });
+    const commands: Partial<Record<Team, SquadCommand>> = { fruit: 'fetch', dessert: null };
+    let s = s0;
+    let sawGround = false;
+    for (let t = 0; t < 900 && !sawGround; t++) {
+      s = step(s, new Map(), commands);
+      const crate = s.crates.find((c) => c.id === 101);
+      if (crate !== undefined && crate.state === 'ground') sawGround = true;
+    }
+    const crate101 = s.crates.find((c) => c.id === 101);
+    expect(
+      sawGround,
+      `crate 101 never hit the ground (last state: ${crate101?.state ?? 'gone, pad: ' + JSON.stringify(s.pads.fruit.cells)})`,
+    ).toBe(true);
+    expect(must(s.units[0]).carrying).toBeNull();
+  });
+
   it('guard: commanded bots stay within 6 units of their stall for 60 s', () => {
     let s = createMatch(7, { humanUnit: null });
     const commands: Partial<Record<Team, SquadCommand>> = { fruit: 'guard', dessert: 'guard' };
