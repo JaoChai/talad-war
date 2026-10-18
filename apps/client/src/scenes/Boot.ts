@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 
-import { createCharacterAnimations, type ArtManifest } from '../render/anims';
+import { createCharacterAnimations, validateClassArt, type ArtManifest } from '../render/anims';
 
 /** `?seed=<int>` overrides the match seed; anything else is seed 1. */
 export function seedFromUrl(): number {
@@ -26,6 +26,11 @@ export class BootScene extends Phaser.Scene {
       this.scene.start('title', { seed: seedFromUrl() });
       return;
     }
+    // §4.2/§4.3: a malformed classArt block falls back to classless rendering
+    // instead of crashing boot; the generic props loader is untouched. The
+    // sanitized manifest rides the game registry for downstream scenes.
+    const classArt = validateClassArt(manifest);
+    this.registry.set('art-manifest', classArt ? manifest : { ...manifest, classArt: undefined });
     for (const [key, c] of Object.entries(manifest.characters)) {
       this.load.spritesheet(key, `art/${c.file}`, {
         frameWidth: c.frameWidth,

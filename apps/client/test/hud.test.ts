@@ -113,6 +113,10 @@ function layout(s: MatchState, entries: { col: number; layer: 0 | 1; super?: boo
 
 const stars = (el: HTMLElement) => el.querySelectorAll('img[src$="prop_badge_super.webp"]');
 
+// R2-9 note: the fixtures below deliberately pin the DEFAULT control start
+// (createMatch's human = unit 0 = `controlledUnit` at tick 0), per the §8
+// migration ledger. Target-ID, sparse-array and nonzero-humanUnit coverage
+// lives in test/controlHud.test.ts; do not rewrite these into control flips.
 describe('R1 held-item HUD', () => {
   function setup() {
     const mount = document.createElement('div');
@@ -308,6 +312,7 @@ describe('R1 preview states', () => {
 });
 
 describe('pad preview', () => {
+  // Deliberate default-control fixture (see the R2-9 note above R1 held-item).
   it('glowCellFor: unit 0 alive on its own pad cell -> that cell; else null', () => {
     const s = state();
     expect(glowCellFor(s)).toBeNull(); // unit 0 starts at its stall

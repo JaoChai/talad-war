@@ -4,6 +4,8 @@ import {
   BOMB_STALL_MULT,
   BULLET_SPEED,
   CARRY_SPEED,
+  CLASS_SUPER_HP_MULT,
+  CLASS_SUPER_SPEED_MULT,
   COCONUT_SPEED,
   GUN_COOLDOWN_TICKS,
   GUN_DMG,
@@ -22,6 +24,7 @@ import {
   UNIT_MAX_HP,
   UNIT_SPEED,
 } from './constants';
+import { classStats } from './classes';
 import type { GunSlot, Unit, WeaponKind } from './types';
 
 /** Equipment quality is local to its slot, never inherited from the unit. */
@@ -69,10 +72,22 @@ export function bombStats(superBomb: boolean): {
 }
 
 export function unitMaxHp(unit: Unit): number {
+  if (unit.classId !== undefined) {
+    return Math.round(
+      classStats(unit.classId).maxHp * (unit.superBuddy === true ? CLASS_SUPER_HP_MULT : 1),
+    );
+  }
   return unit.superBuddy === true ? SUPER_BUDDY_MAX_HP : UNIT_MAX_HP;
 }
 
 export function unitMoveSpeed(unit: Unit): number {
   const base = unit.carrying === null ? UNIT_SPEED : CARRY_SPEED;
+  if (unit.classId !== undefined) {
+    return (
+      base *
+      classStats(unit.classId).speedMult *
+      (unit.superBuddy === true ? CLASS_SUPER_SPEED_MULT : 1)
+    );
+  }
   return base * (unit.superBuddy === true ? SUPER_BUDDY_SPEED_MULT : 1);
 }

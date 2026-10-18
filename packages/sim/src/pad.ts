@@ -1,9 +1,10 @@
+import { CLASS_IDS } from './classes';
 import { PAD_CELL_SIZE, PAD_FLOOR, TEAM_CAP } from './constants';
 import { pointInRect } from './geometry';
 import { padRect } from './map';
-import type { CrateId, MatchState, Pad, Team, UnitId, Vec2 } from './types';
+import type { ClassPick, CrateId, MatchState, Pad, Team, UnitId, Vec2 } from './types';
 
-export type Recipe = 'gun' | 'bombs' | 'buddy' | 'heavy';
+export type Recipe = 'gun' | 'bombs' | 'buddy' | 'heavy' | 'class';
 
 export type Preview =
   | { recipe: Recipe; super: boolean; openable: true }
@@ -66,10 +67,12 @@ export function liftTop(pad: Pad, col: number): CrateId | null {
 /**
  * v1 recipes, exact shapes only: 1 crate anywhere -> gun; 2 ground crates in
  * adjacent cols -> bombs; one column with both layers -> buddy. R1 adds exactly
- * four ground crates with every upper cell empty -> heavy. Anything else -> null.
+ * four ground crates with every upper cell empty -> heavy. R2 adds only the four
+ * exact side-adjacent full-column walls -> class. Other R1 outputs stay unchanged.
  */
 export function matchRecipe(pad: Pad): Recipe | null {
   let count = 0;
+  let mask = 0;
   let stackedCol: number | null = null;
   const groundCols: number[] = [];
   for (let col = 0; col < pad.cells.length; col++) {
@@ -77,15 +80,18 @@ export function matchRecipe(pad: Pad): Recipe | null {
     if (column === undefined) continue;
     if ((column[0] ?? null) !== null) {
       count++;
+      mask |= 1 << (col * 2);
       groundCols.push(col);
     }
     if ((column[1] ?? null) !== null) {
       count++;
+      mask |= 1 << (col * 2 + 1);
       stackedCol = col;
     }
   }
   if (count === 1) return 'gun';
   if (count === 4 && groundCols.length === 4) return 'heavy';
+  if ([15, 51, 204, 240].includes(mask)) return 'class';
   if (count === 2) {
     if (stackedCol !== null) return 'buddy'; // ground + upper in one column
     const a = groundCols[0] ?? -1;
@@ -107,6 +113,11 @@ export function recipeResult(s: MatchState, team: Team): { recipe: Recipe; super
   const recipe = matchRecipe(pad);
   const bans = s.itemBans?.[team];
   if (recipe === null || (recipe === 'heavy' && bans?.includes('heavy'))) return null;
+  if (
+    recipe === 'class' &&
+    (bans?.includes('class') || CLASS_IDS.every((classId) => bans?.includes(classId)))
+  )
+    return null;
   const ids = new Set(pad.cells.flat());
   const quality =
     !bans?.includes('super') && s.crates.some((c) => ids.has(c.id) && c.kind === 'super');
@@ -120,7 +131,7 @@ export function padPreview(s: MatchState, team: Team): Preview {
     return { openable: false, reason: 'empty', recipe: null, super: false };
   const result = recipeResult(s, team);
   if (result === null) return { openable: false, reason: 'notRecipe', recipe: null, super: false };
-  if (result.recipe === 'buddy') {
+  if (result.recipe === 'buddy' || result.recipe === 'class') {
     const teamSize = s.units.filter((u) => u.team === team).length; // alive + dead
     if (teamSize >= TEAM_CAP) return { ...result, openable: false, reason: 'teamFull' };
   }
@@ -146,4 +157,19 @@ export function canOpen(s: MatchState, unitId: UnitId): boolean {
   if (pad.opening !== null) return false;
   if (padCellAt(pad, unit.pos) === null) return false;
   return padPreview(s, unit.team).openable;
+}
+
+/** A class wall is eligible for choices, but only a fresh allowed pick starts it. */
+export function canStartOpen(s: MatchState, unitId: UnitId, classPick?: ClassPick): boolean {
+  if (!canOpen(s, unitId)) return false;
+  const unit = s.units.find((u) => u.id === unitId);
+  if (unit === undefined) return false;
+  const pad = s.pads[unit.team];
+  if (matchRecipe(pad) !== 'class') return true;
+  return (
+    classPick != null &&
+    CLASS_IDS.includes(classPick.classId) &&
+    !s.itemBans?.[unit.team]?.includes(classPick.classId) &&
+    classPick.snapshot === JSON.stringify(pad.cells)
+  );
 }

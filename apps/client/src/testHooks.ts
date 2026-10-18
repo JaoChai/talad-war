@@ -1,4 +1,4 @@
-import type { CrateKind, MatchState, SquadCommand, Team } from '@talad/sim';
+import type { CrateKind, MatchState, SquadCommand, Team, UnitId, UnitInput } from '@talad/sim';
 import type { SfxKey } from './audio';
 import type { MatchStats } from './stats';
 
@@ -73,6 +73,11 @@ export interface TaladTestHooks {
   state(): MatchState;
   setSeed(seed: number): void;
   fastForward(ticks: number): void;
+  /**
+   * R2-11 dev-only deterministic staging: one real stepTick + syncAll with
+   * explicit per-unit inputs (same path as real play, no prod mutation API).
+   */
+  stepInputs(inputs: ReadonlyArray<readonly [UnitId, UnitInput]>): void;
   setCommand(team: Team, cmd: SquadCommand): void;
   /** Teleport a unit (review round 1 #1: deterministic staging, no chase loops). */
   placeUnit(unitId: number, x: number, y: number): void;

@@ -353,7 +353,7 @@ describe('padPreview', () => {
 });
 
 describe('R1 recipe shapes and quality', () => {
-  it('all 256 masks preserve the v1 oracle except the four-ground heavy', () => {
+  it('all 256 masks preserve the R1 oracle except the four exact class walls', () => {
     // Frozen pre-R1 matcher, including legacy floating one/two-cell fixtures.
     function v1(pad: Pad): 'gun' | 'bombs' | 'buddy' | null {
       const ground: number[] = [];
@@ -384,7 +384,9 @@ describe('R1 recipe shapes and quality', () => {
         if (mask & (1 << bit)) entries.push([Math.floor(bit / 2), bit % 2]);
       }
       const pad = padWith(entries);
-      expect(matchRecipe(pad), `mask ${mask}`).toBe(mask === 85 ? 'heavy' : v1(pad));
+      expect(matchRecipe(pad), `mask ${mask}`).toBe(
+        [15, 51, 204, 240].includes(mask) ? 'class' : mask === 85 ? 'heavy' : v1(pad),
+      );
     }
   });
 
@@ -399,7 +401,7 @@ describe('R1 recipe shapes and quality', () => {
         [col, 0],
         [col, 1],
       ]);
-      expect(matchRecipe(padWith(entries))).toBeNull();
+      expect(matchRecipe(padWith(entries))).toBe('class');
     }
     expect(
       matchRecipe(

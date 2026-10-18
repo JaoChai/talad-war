@@ -1,0 +1,270 @@
+/* R2-only HUD components (plan §5 "Client UI contract, tokens, states and
+   widths"). R2-10 ships the rules only — importing this file into shell.css
+   and wiring the components into the scene are R2-11's integration scope.
+   Everything is scoped to the R2 components; no global restyle. */
+
+.tw-screen-hud {
+  --tw-r2-ink: #1b1030;
+  --tw-r2-paper: #fff5d9;
+  --tw-r2-text: #fff;
+  --tw-r2-panel: rgba(27, 16, 48, 0.92);
+  --tw-r2-focus: #ffd75e;
+  --tw-r2-super: #ff3fa4;
+  --tw-r2-space-1: 4px;
+  --tw-r2-space-2: 8px;
+  --tw-r2-space-3: 12px;
+  --tw-r2-space-4: 16px;
+  --tw-r2-radius-panel: 10px;
+  --tw-r2-radius-button: 12px;
+  --tw-r2-font: 'Noto Sans Thai', Tahoma, sans-serif;
+}
+
+/* --- Class tray: four choices, centred, clear of the command/action columns */
+
+#tw-class-pick {
+  position: absolute;
+  left: 50%;
+  bottom: max(var(--tw-r2-space-4), env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  width: 336px;
+  padding: var(--tw-r2-space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--tw-r2-space-1);
+  background: var(--tw-r2-panel);
+  border: 2px solid var(--tw-r2-ink);
+  border-radius: var(--tw-r2-radius-panel);
+  color: var(--tw-r2-text);
+  font-family: var(--tw-r2-font);
+  font-weight: 700;
+  pointer-events: auto;
+}
+
+#tw-class-pick[hidden] {
+  display: none;
+}
+
+.tw-class-header {
+  flex: 0 0 22px;
+  font-size: 16px;
+  line-height: 22px;
+  text-align: center;
+}
+
+.tw-class-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--tw-r2-space-1);
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.tw-class-status[hidden] {
+  display: none;
+}
+
+/* Channel fill driven by sync() from sim ticks via --tw-r2-progress. */
+.tw-class-progress {
+  box-sizing: border-box;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--tw-r2-ink);
+  overflow: hidden;
+  position: relative;
+}
+
+.tw-class-progress::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--tw-r2-super);
+  transform: scaleX(var(--tw-r2-progress, 0));
+  transform-origin: left center;
+}
+
+.tw-class-actions {
+  display: flex;
+  gap: var(--tw-r2-space-2);
+}
+
+.tw-class-actions[hidden] {
+  display: none;
+}
+
+.tw-class-btn {
+  box-sizing: border-box;
+  position: relative;
+  width: 72px;
+  height: 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--tw-r2-space-1);
+  background: var(--tw-r2-paper);
+  color: var(--tw-r2-ink);
+  border: 2px solid var(--tw-r2-ink);
+  border-radius: var(--tw-r2-radius-button);
+  font-family: var(--tw-r2-font);
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  pointer-events: auto;
+}
+
+.tw-class-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tw-class-icon {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+
+.tw-class-label {
+  font-size: 16px;
+  line-height: 22px;
+  white-space: nowrap;
+}
+
+.tw-class-key {
+  position: absolute;
+  top: 0;
+  right: var(--tw-r2-space-1);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* Short-landscape / narrow: 280 px tray, 4 px gaps, 60×72 buttons, 14/20.
+   Match the dock/command-row band too: the loadout starts at x304 there. */
+@media (max-width: 740px), (max-height: 350px) and (min-width: 600px) {
+  #tw-class-pick {
+    width: 280px;
+  }
+
+  .tw-class-actions {
+    gap: var(--tw-r2-space-1);
+  }
+
+  .tw-class-btn {
+    width: 60px;
+    height: 72px;
+  }
+
+  .tw-class-label {
+    font-size: 14px;
+    line-height: 20px;
+  }
+}
+
+/* On short landscape screens the centred tray sits above the pad preview.
+   <=700px needs the separately owner-approved dock below: a 118px tray
+   cannot fit between the command row and preview at 667×320. */
+@media (max-height: 480px) and (orientation: landscape) {
+  #tw-class-pick {
+    bottom: max(41vh, env(safe-area-inset-bottom));
+  }
+}
+
+/* --- Switch: screen-HUD button for BOTH inputs, left edge under the top bar */
+
+#tw-btn-switch {
+  position: absolute;
+  left: max(var(--tw-r2-space-4), env(safe-area-inset-left));
+  top: max(56px, calc(env(safe-area-inset-top) + 56px));
+  box-sizing: border-box;
+  width: 112px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--tw-r2-space-1);
+  padding: var(--tw-r2-space-1);
+  background: var(--tw-r2-panel);
+  color: var(--tw-r2-text);
+  border: 2px solid var(--tw-r2-ink);
+  border-radius: var(--tw-r2-radius-button);
+  font-family: var(--tw-r2-font);
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 22px;
+  cursor: pointer;
+  touch-action: manipulation;
+  pointer-events: auto;
+}
+
+#tw-btn-switch[hidden] {
+  display: none;
+}
+
+#tw-btn-switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Owner-approved B dock: Lead also includes the <=350px command-row band,
+   so browser bars cannot leave fetch behind the tray on wider phones.
+   #app beats shell.css's older narrow tray nudge. */
+@media (max-width: 700px) and (orientation: landscape), (max-height: 350px) and (min-width: 600px) {
+  #app #tw-class-pick {
+    left: max(var(--tw-r2-space-4), env(safe-area-inset-left));
+    top: max(56px, calc(env(safe-area-inset-top) + 56px));
+    bottom: auto;
+    transform: none;
+  }
+
+  #tw-btn-switch {
+    top: auto;
+    bottom: max(var(--tw-r2-space-4), env(safe-area-inset-bottom));
+  }
+}
+
+/* Fit the complete Thai word, icon and R hint inside the fixed 112px button. */
+.tw-switch-label {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tw-switch-icon {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+}
+
+.tw-switch-key {
+  font-size: 12px;
+  line-height: 16px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 0 var(--tw-r2-space-1);
+}
+
+/* Visually hidden accessible description (switchUnavailable). */
+.tw-switch-desc {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Focus: 3 px gold outline, offset 3 px — never suppressed. */
+#tw-class-pick button:focus-visible,
+#tw-btn-switch:focus-visible {
+  outline: 3px solid var(--tw-r2-focus);
+  outline-offset: 3px;
+}
+
+/* The arrow bob and any motion respect reduced motion (no tray animation). */
+@media (prefers-reduced-motion: reduce) {
+  .tw-class-progress::after {
+    transition: none;
+  }
+}

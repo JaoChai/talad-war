@@ -4,12 +4,12 @@ import {
   DT,
   RESPAWN_TICKS,
   SLAP_COOLDOWN_TICKS,
-  SLAP_DMG,
   SLAP_RANGE,
   SPAWN_OFFSETS,
   STALL_RECTS,
   UNIT_RADIUS,
 } from './constants';
+import { tryNinjaKnock, unitBombDamageMult, unitSlapDamage } from './classes';
 import { dropCrateAt } from './crates';
 import { circleOverlapsRect, dist2, pointInRect } from './geometry';
 import { bombStats, unitMaxHp, weaponStats } from './items';
@@ -79,8 +79,10 @@ export function processAttacks(s: MatchState, inputs: ReadonlyMap<UnitId, UnitIn
           unit.gun.ammoCooldownTicks = weaponStats(unit.gun).cooldownTicks;
         }
       } else if (unit.attackCooldownTicks === 0) {
-        slap(s, unit);
-        unit.attackCooldownTicks = SLAP_COOLDOWN_TICKS;
+        if (!tryNinjaKnock(s, unit)) {
+          slap(s, unit);
+          unit.attackCooldownTicks = SLAP_COOLDOWN_TICKS;
+        }
       }
     }
     if (input.throwBomb && unit.bombs > 0) {
@@ -125,6 +127,9 @@ export function updateRespawns(s: MatchState): void {
     unit.bombsSuper = false;
     unit.carrying = null;
     unit.attackCooldownTicks = 0;
+    if (unit.classId === 'ninja' || unit.ninjaKnockReadyTick !== undefined) {
+      unit.ninjaKnockReadyTick = 0;
+    }
     unit.deadUntilTick = null;
     s.events.push({
       tick: s.tick,
@@ -234,7 +239,7 @@ function slap(s: MatchState, unit: Unit): void {
     bestD2 = d2;
   }
   if (target !== null) {
-    damageUnit(s, target, SLAP_DMG, 'slap', false);
+    damageUnit(s, target, unitSlapDamage(unit), 'slap', false);
     return;
   }
   const enemyTeam = otherTeam(unit.team);
@@ -242,7 +247,7 @@ function slap(s: MatchState, unit: Unit): void {
   const nx = Math.min(Math.max(unit.pos.x, rect.minX), rect.maxX);
   const ny = Math.min(Math.max(unit.pos.y, rect.minY), rect.maxY);
   if (dist2(unit.pos, { x: nx, y: ny }) <= SLAP_RANGE * SLAP_RANGE) {
-    damageStall(s, s.stalls[enemyTeam], SLAP_DMG, 'slap', false);
+    damageStall(s, s.stalls[enemyTeam], unitSlapDamage(unit), 'slap', false);
   }
 }
 
@@ -341,6 +346,7 @@ function damageUnit(
   quality: boolean,
 ): void {
   if (unitDead(unit)) return;
+  if (source === 'bombs') dmg *= unitBombDamageMult(unit);
   unit.hp = Math.max(0, unit.hp - dmg);
   if (unit.carrying !== null) dropCrateAt(s, unit.carrying, unit.pos, unit.id);
   s.events.push({ tick: s.tick, kind: 'hit', target: unit.id, dmg, source, super: quality });

@@ -12,7 +12,12 @@ export interface GunSlot {
   kind?: WeaponKind;
   super?: boolean;
 }
-export type ItemBan = 'heavy' | 'super';
+export type UnitClass = 'boxer' | 'healer' | 'ninja' | 'giant';
+export interface ClassPick {
+  classId: UnitClass;
+  snapshot: string;
+}
+export type ItemBan = 'heavy' | 'super' | 'class' | UnitClass;
 
 export interface Vec2 {
   x: number;
@@ -26,6 +31,8 @@ export interface UnitInput {
   throwBomb: boolean;
   pickDrop: boolean;
   open: boolean;
+  classPick?: ClassPick;
+  switchNext?: boolean;
 }
 
 export type SquadCommand = 'attack' | 'guard' | 'fetch' | null;
@@ -43,6 +50,9 @@ export interface Unit {
   bombsSuper?: boolean;
   /** Permanent unit perk, independent of equipment and retained through death. */
   superBuddy?: boolean;
+  /** Persistent class; omitted for basic teammates. */
+  classId?: UnitClass;
+  ninjaKnockReadyTick?: number;
   /** Ticks until the next unarmed slap may fire (Task 4). */
   attackCooldownTicks: number;
   deadUntilTick: number | null;
@@ -64,7 +74,12 @@ export interface Pad {
   origin: Vec2;
   /** [col 0..3][layer 0..1]; col = 2x2 floor index. */
   cells: (CrateId | null)[][];
-  opening: { byUnit: UnitId; doneTick: number; snapshot: string } | null;
+  opening: {
+    byUnit: UnitId;
+    doneTick: number;
+    snapshot: string;
+    classId?: UnitClass;
+  } | null;
 }
 
 export interface Stall {

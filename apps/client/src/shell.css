@@ -1,3 +1,36 @@
+@import './r2.css';
+
+/* R2 screen-HUD controls must receive pointer starts over the touch-only
+   joystick zone (plan §5: the zone yields to controls). The tray/switch live
+   in the .tw-screen-hud layer, the joystick zone in the .tw-hud-root layer;
+   both layers are position:fixed z-index:10 siblings, so DOM order put the
+   touch layer on top and .tw-joy-zone intercepted every pointer over the R2
+   controls (measured via elementFromPoint). Lift the screen-HUD layer above
+   the touch layer (#app prefix: higher specificity than the shared
+   .tw-screen-hud,.tw-hud-root rule below, so CSS minification cannot merge
+   or reorder it); the per-control z-index below then orders the R2 controls
+   within it. */
+#app .tw-screen-hud {
+  z-index: 11;
+}
+
+#tw-class-pick,
+#tw-btn-switch {
+  z-index: 13;
+}
+
+/* §5 667×320: the measured Pick action button is ~90px wide (its Thai label
+   exceeds the 64px min-width), so a centred 280px tray overlaps it (tray
+   right edge 473.5 vs Pick left edge 456.7 at 667px). Nudge the narrow tray
+   26px left: every pinned §5 dimension (280px tray, 60×72 buttons, 4px gaps)
+   is kept and Pick is cleared by ~9px. The base tray (≥740px) stays exactly
+   centred. */
+@media (max-width: 740px) {
+  #tw-class-pick {
+    left: calc(50% - 26px);
+  }
+}
+
 html,
 body {
   margin: 0;
@@ -870,5 +903,32 @@ body {
   .tw-timer {
     top: 0;
     line-height: 18px;
+  }
+}
+
+/* Owner-approved B dock for narrow landscape / the <=350px command row:
+   left16/top56; keep the full loadout immediately beside it and fetch below
+   the rightmost command (global right10/top122). The command parent can be
+   0×0, so these offsets are relative to its right10/top56 origin. */
+@media (max-width: 700px) and (orientation: landscape), (max-height: 350px) and (min-width: 600px) {
+  .tw-loadout {
+    left: 304px;
+    top: 52px;
+    transform: none;
+  }
+
+  .tw-cmd-btn {
+    position: absolute;
+    top: 0;
+    right: 0;
+  }
+
+  .tw-cmd-btn:nth-child(2) {
+    right: 94px;
+  }
+
+  #tw-cmd-fetch {
+    right: 0;
+    top: 66px;
   }
 }

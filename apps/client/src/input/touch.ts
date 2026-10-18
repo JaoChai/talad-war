@@ -107,6 +107,32 @@ export class TouchControls {
     return read;
   }
 
+  /**
+   * Client reset on a successful controlSwitched (plan §2.4): releases the
+   * joystick pointer capture, clears the move vector, fire latch and one-shot
+   * pulses. Safe even after the pointer was already cancelled — no stuck
+   * fire/joystick, and late events for the old pointer id are ignored.
+   */
+  resetForHandoff(): void {
+    if (this.joyPointerId !== null) {
+      try {
+        if (this.zone.hasPointerCapture(this.joyPointerId)) {
+          this.zone.releasePointerCapture(this.joyPointerId);
+        }
+      } catch {
+        // Capture already gone (cancelled) — nothing to release.
+      }
+      this.joyPointerId = null;
+    }
+    this.vec = { x: 0, y: 0 };
+    this.joyBase.style.display = 'none';
+    this.moveKnob(0, 0);
+    this.fireHeld = false;
+    this.pickPulse = false;
+    this.throwPulse = false;
+    this.openPulse = false;
+  }
+
   /** Called every frame: Open! only when valid, Throw only while bombs > 0. */
   syncUi(canOpen: boolean, bombs: number, matchOver: boolean): void {
     this.openBtn.hidden = !canOpen;
