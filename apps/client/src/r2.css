@@ -161,6 +161,21 @@
   }
 }
 
+/* Short landscape screens (844×390, 667×320, …): the touch pad and its
+   preview label ride the canvas FIT at ~62% of the viewport height, so the §5
+   bottom-16px tray covered the label and the pad crates (55%/71% measured at
+   96dff73). Lift the tray on short landscape viewports only: bottom 41vh puts
+   its lower edge ~9px above the label at 667×320 and ~19px above it at
+   844×390, ≥8px below the loadout, and clear of the crates, switch, commands
+   and action buttons (asserted in r2Layout.spec). Horizontal centring, width
+   and all pinned sizes stay unchanged; taller/desktop screens keep the §5
+   bottom placement. */
+@media (max-height: 480px) and (orientation: landscape) {
+  #tw-class-pick {
+    bottom: max(41vh, env(safe-area-inset-bottom));
+  }
+}
+
 /* --- Switch: screen-HUD button for BOTH inputs, left edge under the top bar */
 
 #tw-btn-switch {
