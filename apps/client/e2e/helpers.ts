@@ -136,20 +136,24 @@ export async function getState(page: Page): Promise<HookState> {
   return page.evaluate(() => window.__talad.state());
 }
 
-/** Observe a REAL open request before advancing its remaining sim ticks. */
+/** Sample the REAL open request before advancing its remaining sim ticks. */
 export async function finishOpening(page: Page): Promise<void> {
-  await expect
-    .poll(async () =>
-      page.evaluate(() => {
-        const state = window.__talad.state();
-        const opening = state.pads.fruit!.opening;
-        if (opening === null) return false;
-        window.__talad.fastForward(Math.max(0, opening.doneTick - state.tick));
-        return true;
-      }),
-    )
-    .toBe(true);
+  // A wall-clock poll can see zero live ticks. Consume the actual input merge,
+  // never fabricate open:true, then require the real sim to accept the channel.
+  await stepRealInputs(page, 1);
+  const accepted = await page.evaluate(() => {
+    const state = window.__talad.state();
+    const opening = state.pads.fruit!.opening;
+    if (opening === null) return false;
+    window.__talad.fastForward(Math.max(0, opening.doneTick - state.tick));
+    return true;
+  });
+  expect(accepted, 'real input started an opening before finishing its ticks').toBe(true);
 }
+
+// One discovery per document: repeated module/queryObjects walks cost ~1s each
+// locally and can themselves exhaust a slow runner's channel-test budget.
+const realInputTargets = new WeakMap<Page, { cdp: CDPSession; gamesId: string }>();
 
 /**
  * Sample the actual keyboard/touch/R2 merge and use the existing stepInputs
@@ -162,8 +166,44 @@ export async function stepRealInputs(
   ticks: number,
   adjacentEnemyId?: number,
 ): Promise<HookState> {
-  const cdp = await page.context().newCDPSession(page);
+  const cached = realInputTargets.get(page);
+  const cdp = cached?.cdp ?? (await page.context().newCDPSession(page));
+  const stepTarget = async (gamesId: string) => {
+    const result = await cdp.send('Runtime.callFunctionOn', {
+      objectId: gamesId,
+      functionDeclaration: `function(ticks, enemyId) {
+        const game = this.find(g => g.scene?.isActive('match'));
+        if (!game) return null;
+        const scene = game.scene.getScene('match');
+        const startTick = window.__talad.state().tick;
+        for (let i = 0; i < ticks; i++) {
+          if (enemyId !== null) {
+            const s = window.__talad.state();
+            const me = s.units.find(u => !u.isBot);
+            const enemy = s.units.find(u => u.id === enemyId);
+            if (!me || !enemy) throw new Error('Combat staging unit missing');
+            window.__talad.placeUnit(enemyId, me.pos.x + 0.6, me.pos.y);
+          }
+          window.__talad.stepInputs(Array.from(scene.humanInputs()));
+        }
+        const state = window.__talad.state();
+        if (state.tick - startTick !== ticks) {
+          throw new Error('Real-input window did not run all ' + ticks + ' ticks');
+        }
+        return state;
+      }`,
+      arguments: [{ value: ticks }, { value: adjacentEnemyId ?? null }],
+      returnByValue: true,
+    });
+    if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
+    return result.result.value as HookState | null;
+  };
   try {
+    if (cached) {
+      const state = await stepTarget(cached.gamesId);
+      if (!state) throw new Error('Cached match scene is no longer active');
+      return state;
+    }
     const hook = await cdp.send('Runtime.evaluate', { expression: 'window.__talad.artFeedback' });
     const details = await cdp.send('Runtime.getProperties', { objectId: hook.result.objectId! });
     const scopes = details.internalProperties!.find((p) => p.name === '[[Scopes]]')!;
@@ -185,33 +225,28 @@ export async function stepRealInputs(
       const games = await cdp.send('Runtime.queryObjects', {
         prototypeObjectId: prototype.result.objectId,
       });
-      const result = await cdp.send('Runtime.callFunctionOn', {
-        objectId: games.objects.objectId!,
-        functionDeclaration: `function(ticks, enemyId) {
-          const game = this.find(g => g.scene?.isActive('match'));
-          if (!game) return null;
-          const scene = game.scene.getScene('match');
-          for (let i = 0; i < ticks; i++) {
-            if (enemyId !== null) {
-              const s = window.__talad.state();
-              const me = s.units.find(u => !u.isBot);
-              const enemy = s.units.find(u => u.id === enemyId);
-              if (!me || !enemy) throw new Error('Combat staging unit missing');
-              window.__talad.placeUnit(enemyId, me.pos.x + 0.6, me.pos.y);
-            }
-            window.__talad.stepInputs(Array.from(scene.humanInputs()));
-          }
-          return window.__talad.state();
-        }`,
-        arguments: [{ value: ticks }, { value: adjacentEnemyId ?? null }],
-        returnByValue: true,
-      });
-      if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
-      if (result.result.value) return result.result.value as HookState;
+      const state = await stepTarget(games.objects.objectId!);
+      if (state) {
+        realInputTargets.set(page, { cdp, gamesId: games.objects.objectId! });
+        // A new document invalidates CDP object handles. Page/context closure
+        // destroys the session automatically; never reuse it across navigation.
+        const invalidate = () => {
+          realInputTargets.delete(page);
+          void cdp.detach().catch(() => {});
+          page.off('framenavigated', onNavigation);
+          page.off('close', invalidate);
+        };
+        const onNavigation = (frame: ReturnType<Page['mainFrame']>) => {
+          if (frame === page.mainFrame()) invalidate();
+        };
+        page.on('framenavigated', onNavigation);
+        page.once('close', invalidate);
+        return state;
+      }
     }
     throw new Error('Live match scene not found for real-input stepping');
   } finally {
-    await cdp.detach();
+    if (!realInputTargets.has(page)) await cdp.detach();
   }
 }
 

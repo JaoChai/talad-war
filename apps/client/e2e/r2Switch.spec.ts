@@ -75,12 +75,13 @@ async function loadoutLabel(page: Page): Promise<string> {
 test('R hands off control and the released body becomes a bot', async ({ page }) => {
   await page.goto('/?seed=1');
   await enterMatch(page);
+  await stepRealInputs(page, 0); // discover before any live one-shot/channel
   const before = await getState(page);
   const from = controlledHookUnit(before)!;
   expect(from.id).toBe(0);
   await page.keyboard.press('KeyR');
-  await expect.poll(async () => controlledHookUnit(await getState(page))?.id).not.toBe(from.id);
-  const after = await getState(page);
+  const after = await stepRealInputs(page, 1);
+  expect(controlledHookUnit(after)?.id).not.toBe(from.id);
   expect(after.units.find((u) => u.id === from.id)?.isBot).toBe(true);
   // Exactly one controlled body exists after the handoff.
   expect(after.units.filter((u) => !u.isBot)).toHaveLength(1);
@@ -90,10 +91,11 @@ test('R hands off control and the released body becomes a bot', async ({ page })
 test('the สลับตัว button hands off the same way', async ({ page }) => {
   await page.goto('/?seed=1');
   await enterMatch(page);
+  await stepRealInputs(page, 0); // discover before any live one-shot/channel
   const from = controlledHookUnit(await getState(page))!;
   await switchButton(page).click();
-  await expect.poll(async () => controlledHookUnit(await getState(page))?.id).not.toBe(from.id);
-  const after = await getState(page);
+  const after = await stepRealInputs(page, 1);
+  expect(controlledHookUnit(after)?.id).not.toBe(from.id);
   expect(after.units.find((u) => u.id === from.id)?.isBot).toBe(true);
   expect(after.units.filter((u) => !u.isBot)).toHaveLength(1);
 });
@@ -101,6 +103,7 @@ test('the สลับตัว button hands off the same way', async ({ page })
 test('loadout and the white ring bind to the new body, not the released one', async ({ page }) => {
   await page.goto('/?seed=1');
   await enterMatch(page);
+  await stepRealInputs(page, 0); // discover before any live one-shot/channel
   // Give the controlled body a real loadout difference: recruit a bombs pair? No —
   // real bombs belong to the opener; stage a bomb wall and open it with E.
   await page.evaluate(() => {
@@ -124,9 +127,9 @@ test('loadout and the white ring bind to the new body, not the released one', as
   const ringOn0 = await ringPos(page);
   // Switch: unit 1 is empty-handed and elsewhere — loadout and ring follow it.
   await page.keyboard.press('KeyR');
-  await expect.poll(async () => controlledHookUnit(await getState(page))?.id).toBe(1);
+  const st = await stepRealInputs(page, 1);
+  expect(controlledHookUnit(st)?.id).toBe(1);
   expect(await loadoutLabel(page)).not.toContain('ระเบิด');
-  const st = await getState(page);
   const unit1 = st.units.find((u) => u.id === 1)!;
   // Stage-space mapping: 720p strip, stage = (40 + 30x, 30y).
   const expected = { x: 40 + unit1.pos.x * 30, y: unit1.pos.y * 30 };
@@ -140,6 +143,7 @@ test('held fire and WASD do not leak into the new body (desktop)', async ({ page
   test.skip(info.project.name === 'mobile-landscape', 'desktop keyboard/mouse variant');
   await page.goto('/?seed=1');
   await enterMatch(page);
+  await stepRealInputs(page, 0); // discover before any live one-shot/channel
   await page.evaluate(() => {
     window.__talad.setCommand('fruit', 'attack');
     for (const id of [1, 2]) {
@@ -149,7 +153,7 @@ test('held fire and WASD do not leak into the new body (desktop)', async ({ page
   });
   const st = await getState(page);
   const me = controlledHookUnit(st)!;
-  await stageAdjacentEnemy(page, me);
+  const enemy = await stageAdjacentEnemy(page, me);
   // Hold fire + hold D: the body attacks and walks.
   const canvas = page.locator('canvas');
   const cbox = await canvas.boundingBox();
@@ -158,16 +162,17 @@ test('held fire and WASD do not leak into the new body (desktop)', async ({ page
   await page.mouse.down();
   await page.keyboard.down('KeyD');
   const mePos0 = controlledHookUnit(await getState(page))!.pos;
-  await page.waitForTimeout(500);
-  const walked = controlledHookUnit(await getState(page))!.pos;
+  const walked = controlledHookUnit(await stepRealInputs(page, 10, enemy.id))!.pos;
   expect(Math.hypot(walked.x - mePos0.x, walked.y - mePos0.y)).toBeGreaterThan(0.5);
   // Handoff while everything is still held.
   await page.keyboard.press('KeyR');
-  await expect.poll(async () => controlledHookUnit(await getState(page))?.id).toBe(1);
-  const newBody = controlledHookUnit(await getState(page))!;
+  const switched = await stepRealInputs(page, 1);
+  expect(controlledHookUnit(switched)?.id).toBe(1);
+  const newBody = controlledHookUnit(switched)!;
   const at0 = await page.evaluate(() => window.__talad.unitFeedback(1).attackAt);
-  await page.waitForTimeout(600); // D and the mouse are STILL physically held
-  const after = await getState(page);
+  // D/mouse STILL physically held; twelve sampled ticks make the negative
+  // check non-vacuous, with an enemy in range if a fire latch leaked.
+  const after = await stepRealInputs(page, 12, enemy.id);
   expect(controlledHookUnit(after)!.id).toBe(1);
   expect(
     Math.hypot(
@@ -179,21 +184,27 @@ test('held fire and WASD do not leak into the new body (desktop)', async ({ page
   // Fresh cycle works: re-press moves, re-press fire attacks.
   await page.keyboard.up('KeyD');
   await page.keyboard.down('KeyD');
-  await page.waitForTimeout(400);
-  const moved = controlledHookUnit(await getState(page))!.pos;
+  const moved = controlledHookUnit(await stepRealInputs(page, 8))!.pos;
   expect(Math.hypot(moved.x - newBody.pos.x, moved.y - newBody.pos.y)).toBeGreaterThan(0.3);
   await page.keyboard.up('KeyD');
+  // The released bot may have walked under the right-hand HUD before we took
+  // control. Stage the fresh-fire fixture in clear canvas space, not on a DOM
+  // command button (which correctly swallows a mouse press).
+  await page.evaluate(() => window.__talad.placeUnit(1, 14, 11));
   const enemy2 = await stageAdjacentEnemy(page, controlledHookUnit(await getState(page))!);
-  void enemy2;
   const fresh = controlledHookUnit(await getState(page))!;
-  await page.mouse.move((40 + fresh.pos.x * 30) * k, fresh.pos.y * 30 * k);
+  const firePoint = {
+    x: cbox!.x + (40 + fresh.pos.x * 30) * k,
+    y: cbox!.y + fresh.pos.y * 30 * k,
+  };
+  expect(
+    await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.tagName, firePoint),
+  ).toBe('CANVAS');
+  await page.mouse.move(firePoint.x, firePoint.y);
   await page.mouse.up();
   await page.mouse.down();
-  await expect
-    .poll(async () => page.evaluate(() => window.__talad.unitFeedback(1).attackAt), {
-      timeout: 3_000,
-    })
-    .toBeGreaterThan(at0);
+  await stepRealInputs(page, 40, enemy2.id);
+  expect(await page.evaluate(() => window.__talad.unitFeedback(1).attackAt)).toBeGreaterThan(at0);
   await page.mouse.up();
 });
 
@@ -203,27 +214,27 @@ test('held joystick does not leak into the new body (touch)', async ({ page }, i
   const driver = await joyDriver(page, cdp);
   await page.goto('/?seed=1');
   await enterMatch(page);
+  await stepRealInputs(page, 0); // discover before any live one-shot/channel
   const mePos0 = controlledHookUnit(await getState(page))!.pos;
   await driver.steer(1, 0); // hold the joystick right
-  await page.waitForTimeout(500);
-  const walked = controlledHookUnit(await getState(page))!.pos;
+  const walked = controlledHookUnit(await stepRealInputs(page, 10))!.pos;
   expect(Math.hypot(walked.x - mePos0.x, walked.y - mePos0.y)).toBeGreaterThan(0.5);
   // Tap สลับตัว with the joystick still held. Playwright's tap synthesises a
   // real trusted tap (touch → click activation); a raw CDP touchStart/touchEnd
   // pair does not produce a click on this page (the app's touch handlers
   // cancel default activation), so the switch would never queue.
   await page.tap('#tw-btn-switch');
-  await expect.poll(async () => controlledHookUnit(await getState(page))?.id).toBe(1);
-  const newBody = controlledHookUnit(await getState(page))!;
-  await page.waitForTimeout(600); // joystick still held by pointer 1
-  const after = controlledHookUnit(await getState(page))!;
+  const switched = await stepRealInputs(page, 1);
+  expect(controlledHookUnit(switched)?.id).toBe(1);
+  const newBody = controlledHookUnit(switched)!;
+  // Twelve real-input ticks, joystick still physically held by pointer 1.
+  const after = controlledHookUnit(await stepRealInputs(page, 12))!;
   expect(after.id).toBe(1);
   expect(Math.hypot(after.pos.x - newBody.pos.x, after.pos.y - newBody.pos.y)).toBeLessThan(0.2);
   // Release, then a fresh steer moves the new body.
   await driver.release();
   await driver.steer(0, 1);
-  await page.waitForTimeout(400);
-  const moved = controlledHookUnit(await getState(page))!.pos;
+  const moved = controlledHookUnit(await stepRealInputs(page, 8))!.pos;
   expect(Math.hypot(moved.x - newBody.pos.x, moved.y - newBody.pos.y)).toBeGreaterThan(0.3);
   await driver.release();
 });
@@ -231,6 +242,7 @@ test('held joystick does not leak into the new body (touch)', async ({ page }, i
 test('a dead controlled source switches through the R key', async ({ page }) => {
   await page.goto('/?seed=1');
   await enterMatch(page);
+  await stepRealInputs(page, 0); // discover before any live one-shot/channel
   const st = await stageUntil(page, (s) => {
     const c = controlledHookUnit(s);
     return (
@@ -246,16 +258,8 @@ test('a dead controlled source switches through the R key', async ({ page }) => 
   await expect(switchButton(page)).toBeVisible();
   await expect(switchButton(page)).toBeEnabled();
   await page.keyboard.press('KeyR');
-  await expect
-    .poll(
-      async () => {
-        const s = await getState(page);
-        return s.units.find((u) => u.id === dead.id)?.isBot;
-      },
-      { timeout: 3_000 },
-    )
-    .toBe(true);
-  const after = await getState(page);
+  const after = await stepRealInputs(page, 1);
+  expect(after.units.find((u) => u.id === dead.id)?.isBot).toBe(true);
   expect(after.units.filter((u) => !u.isBot)).toHaveLength(1);
   expect(controlledHookUnit(after)!.deadUntilTick).toBeNull();
 });
@@ -263,6 +267,7 @@ test('a dead controlled source switches through the R key', async ({ page }) => 
 test('a dead controlled source switches through the button too', async ({ page }) => {
   await page.goto('/?seed=1');
   await enterMatch(page);
+  await stepRealInputs(page, 0); // discover before any live one-shot/channel
   const st = await stageUntil(page, (s) => {
     const c = controlledHookUnit(s);
     return (
@@ -275,12 +280,8 @@ test('a dead controlled source switches through the button too', async ({ page }
   const dead = controlledHookUnit(st)!;
   expect(dead.deadUntilTick).not.toBeNull();
   await switchButton(page).click();
-  await expect
-    .poll(async () => (await getState(page)).units.find((u) => u.id === dead.id)?.isBot, {
-      timeout: 3_000,
-    })
-    .toBe(true);
-  const after = await getState(page);
+  const after = await stepRealInputs(page, 1);
+  expect(after.units.find((u) => u.id === dead.id)?.isBot).toBe(true);
   expect(after.units.filter((u) => !u.isBot)).toHaveLength(1);
   expect(controlledHookUnit(after)!.deadUntilTick).toBeNull();
 });
@@ -290,6 +291,7 @@ test('no living teammate: switch visible but disabled with the Thai description'
 }) => {
   await page.goto('/?seed=1');
   await enterMatch(page);
+  await stepRealInputs(page, 0); // discover before any live one-shot/channel
   // The live RAF must not tick between staging, the death check and the HUD
   // probe: on CI a teammate could respawn during a protocol round trip.
   const probe = await page.evaluate(() => {
@@ -340,13 +342,14 @@ test('no living teammate: switch visible but disabled with the Thai description'
   const box = await switchButton(page).boundingBox();
   expect(box).not.toBeNull();
   await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  // Sample the disabled activation BEFORE resuming could drop the request.
+  const st = await stepRealInputs(page, 1);
+  expect(st.tick).toBeGreaterThan(probe.tick);
+  expect(controlledHookUnit(st)?.id).toBe(0);
+  expect(st.units.find((u) => u.id === 0)?.isBot).toBe(false);
   await page.evaluate(() => {
     delete (document as { hidden?: boolean }).hidden;
   });
-  await expect.poll(async () => (await getState(page)).tick).toBeGreaterThan(probe.tick);
-  const st = await getState(page);
-  expect(controlledHookUnit(st)?.id).toBe(0);
-  expect(st.units.find((u) => u.id === 0)?.isBot).toBe(false);
 });
 
 test('journey: recruit a super class, switch to it, use its ability, die, respawn with class and quality intact', async ({
@@ -355,6 +358,7 @@ test('journey: recruit a super class, switch to it, use its ability, die, respaw
   test.setTimeout(180_000);
   await page.goto('/?seed=7');
   await enterMatch(page);
+  await stepRealInputs(page, 0); // discover before any live one-shot/channel
   // Stage the SUPER class wall (one star crate) with the body standing on it.
   // Fruit stays on its default commands: parking 'attack' made the fruit push
   // end the whole match before the boxer could die (measured in the first
@@ -376,8 +380,9 @@ test('journey: recruit a super class, switch to it, use its ability, die, respaw
   });
   await expect(page.locator('#tw-class-pick')).toBeVisible();
   await page.getByRole('button', { name: /^นักมวย/ }).click();
+  await stepRealInputs(page, 1);
   await expect(page.locator('#tw-class-pick .tw-class-status')).toBeVisible();
-  await page.evaluate(() => window.__talad.fastForward(22));
+  await finishOpening(page);
   let st = await getState(page);
   expect(st.winner).toBeNull();
   expect(st.pads.fruit!.opening).toBeNull();
@@ -392,7 +397,8 @@ test('journey: recruit a super class, switch to it, use its ability, die, respaw
     if (controlled?.classId === 'boxer') break;
     const fromId = controlled!.id;
     await page.keyboard.press('KeyR');
-    await expect.poll(async () => controlledHookUnit(await getState(page))?.id).not.toBe(fromId);
+    const switched = await stepRealInputs(page, 1);
+    expect(controlledHookUnit(switched)?.id).not.toBe(fromId);
   }
   controlled = controlledHookUnit(await getState(page)) ?? undefined;
   expect(controlled?.classId).toBe('boxer');
