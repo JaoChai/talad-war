@@ -242,42 +242,56 @@ test('switch label stays on one line inside its button at all three sizes', asyn
   }
 });
 
-test('loaded tray clears every real control at 667, 844 and desktop', async ({ page }, info) => {
-  for (const [width, height] of info.project.name === 'desktop'
-    ? [[1280, 800]]
-    : [
-        [844, 390],
-        [667, 320],
-      ]) {
-    await page.setViewportSize({ width: width!, height: height! });
-    await stageTray(page);
-    // Craft bombs through the real channel: renderSnapshot updates the HUD,
-    // but deliberately does not mutate the live touch-control bomb count.
-    await page.evaluate(() =>
-      window.__talad.setPadLayout('fruit', [
-        { col: 0, layer: 0, kind: 'super' },
-        { col: 1, layer: 0 },
-      ]),
-    );
-    await page.keyboard.press('KeyE');
-    await expect.poll(async () => (await getState(page)).pads.fruit!.opening !== null).toBe(true);
-    await page.evaluate(() => window.__talad.fastForward(25));
-    await expect.poll(async () => controlledHookUnit(await getState(page))!.bombs).toBe(5);
-    await page.evaluate(() =>
-      window.__talad.setPadLayout('fruit', [
-        { col: 0, layer: 0, kind: 'super' },
-        { col: 0, layer: 1 },
-        { col: 1, layer: 0 },
-        { col: 1, layer: 1 },
-      ]),
-    );
-    // Visual fixtures only: exercise the real HUD with all independent slot
-    // combinations, not synthetic gameplay events. Pause before renderSnapshot
-    // so live sync cannot overwrite the fixture between measurements.
-    await page.evaluate(() => {
-      Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
-    });
-    for (const primary of ['gun', 'heavy', 'crate'] as const) {
+// Give each viewport/primary an independent render-fixture budget. The old
+// mobile test combined two six-fixture matrices (CI 32.8/33.0s at timeout).
+// All original 18 fixtures remain; the browser-bar sizes add 12 more.
+for (const [width, height] of [
+  [1280, 800],
+  [844, 390],
+  [667, 320],
+  [800, 304],
+  [812, 330],
+] as const) {
+  for (const primary of ['gun', 'heavy', 'crate'] as const) {
+    test(`loaded tray clears every real control at ${width}×${height} with ${primary}`, async ({
+      page,
+    }, info) => {
+      // Measured rate4 + two-CPU contention: setup/crafting alone consumes
+      // ~16s; a quality pair takes ~34s. The 60s render-only budget leaves
+      // measured headroom without changing any gameplay deadline.
+      test.setTimeout(60_000);
+      test.skip(
+        (width === 1280) !== (info.project.name === 'desktop'),
+        'one normal/super primary pair per matching viewport',
+      );
+      await page.setViewportSize({ width, height });
+      await stageTray(page);
+      // Craft bombs through the real channel: renderSnapshot updates the HUD,
+      // but deliberately does not mutate the live touch-control bomb count.
+      await page.evaluate(() =>
+        window.__talad.setPadLayout('fruit', [
+          { col: 0, layer: 0, kind: 'super' },
+          { col: 1, layer: 0 },
+        ]),
+      );
+      await page.keyboard.press('KeyE');
+      await expect.poll(async () => (await getState(page)).pads.fruit!.opening !== null).toBe(true);
+      await page.evaluate(() => window.__talad.fastForward(25));
+      await expect.poll(async () => controlledHookUnit(await getState(page))!.bombs).toBe(5);
+      await page.evaluate(() =>
+        window.__talad.setPadLayout('fruit', [
+          { col: 0, layer: 0, kind: 'super' },
+          { col: 0, layer: 1 },
+          { col: 1, layer: 0 },
+          { col: 1, layer: 1 },
+        ]),
+      );
+      // Visual fixtures only: exercise the real HUD with all independent slot
+      // combinations, not synthetic gameplay events. Pause before renderSnapshot
+      // so live sync cannot overwrite the fixture between measurements.
+      await page.evaluate(() => {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+      });
       for (const quality of [false, true]) {
         await page.evaluate(
           ({ primary, quality }) => {
@@ -308,7 +322,7 @@ test('loaded tray clears every real control at 667, 844 and desktop', async ({ p
               ] as [string, string][])
             : []),
         ]);
-        assertLayout(boxes, width!, height!, width === 667);
+        assertLayout(boxes, width, height, width <= 740 || height <= 350);
         if (choosing) {
           const trayBox = boxes.find((b) => b.name === 'tray')!;
           for (const b of boxes.filter((b) => b.name !== 'tray' && b.name !== 'classBtn')) {
@@ -329,12 +343,52 @@ test('loaded tray clears every real control at 667, 844 and desktop', async ({ p
         ).toBeGreaterThanOrEqual(8);
         await assertCommandsHittable(page);
       }
-    }
-    await page.evaluate(() => {
-      delete (document as { hidden?: boolean }).hidden;
+      await page.evaluate(() => {
+        delete (document as { hidden?: boolean }).hidden;
+      });
     });
   }
-});
+}
+
+// Lead-approved B trigger must match the short command row, including phones
+// whose browser bars reduce the landscape viewport below 350px high. A width-
+// only dock leaves fetch behind the tray at these independently chosen sizes.
+for (const [width, height] of [
+  [800, 304],
+  [812, 330],
+] as const) {
+  test(`${width}×${height}: browser-bar landscape clears every control by 8px`, async ({
+    page,
+  }, info) => {
+    test.skip(info.project.name !== 'mobile-landscape', 'phone landscape controls');
+    await page.setViewportSize({ width, height });
+    await stageTray(page);
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    });
+    const boxes = await measure(page, [...MATCH_CONTROLS, ...(await touchControls(page))]);
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        expect(
+          gap(boxes[i]!, boxes[j]!),
+          `${boxes[i]!.name}↔${boxes[j]!.name}`,
+        ).toBeGreaterThanOrEqual(8);
+      }
+    }
+    await assertTrayHittable(page);
+    await assertCommandsHittable(page);
+    for (const selector of ['#tw-btn-switch', '#tw-btn-pick', '#tw-btn-fire']) {
+      expect(
+        await page.locator(selector).evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+          return hit !== null && el.contains(hit);
+        }),
+        `${selector}: centre hit`,
+      ).toBe(true);
+    }
+  });
+}
 
 test('all three command centres stay tappable with the tray shown at 844 and 667', async ({
   page,

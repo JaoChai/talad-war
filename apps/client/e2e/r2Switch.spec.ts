@@ -284,20 +284,16 @@ test('no living teammate: switch visible but disabled with the Thai description'
 }) => {
   await page.goto('/?seed=1');
   await enterMatch(page);
-  // Deterministic staging: re-place both fruit teammates on dessert guard
-  // posts every 15-tick chunk so SLAP_RANGE adjacency is sustained and both
-  // die in the same combat window. A guard bot walks home after a single
-  // teleport of a teammate (measured), so the re-place loop is what makes
-  // the staging stick. RESPAWN_TICKS=100 bounds the "no living teammate"
-  // window; the probe below runs immediately inside it.
-  let staged: HookState | null = null;
-  for (let i = 0; i < 120 && staged === null; i++) {
-    await page.evaluate(() => {
+  // The live RAF must not tick between staging, the death check and the HUD
+  // probe: on CI a teammate could respawn during a protocol round trip.
+  const probe = await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    window.__talad.setSeed(1);
+    window.__talad.setCommand('fruit', 'guard');
+    window.__talad.setCommand('dessert', 'guard');
+    for (let attempt = 0; attempt < 120; attempt++) {
       const s = window.__talad.state();
-      window.__talad.setCommand('fruit', 'guard');
-      window.__talad.setCommand('dessert', 'guard');
-      // Pool-based posts: patrol and mutual combat can kill or move a fixed
-      // bot, so each victim re-docks on a LIVING dessert bot every chunk.
+      // Use living guard posts: a fixed guard can itself move or die.
       const bots = s.units.filter((u) => u.team === 'dessert' && u.deadUntilTick === null);
       for (let id = 1; id <= 2; id++) {
         const u = s.units.find((x) => x.id === id);
@@ -305,33 +301,28 @@ test('no living teammate: switch visible but disabled with the Thai description'
         if (!u || !bot || u.deadUntilTick !== null) continue;
         window.__talad.placeUnit(id, bot.pos.x, bot.pos.y);
       }
-    });
-    await page.evaluate(() => window.__talad.fastForward(10));
-    const s = await getState(page);
-    if (
-      s.winner !== null ||
-      !s.units.some((u) => u.team === 'fruit' && u.id !== 0 && u.deadUntilTick === null)
-    ) {
-      staged = s;
+      window.__talad.fastForward(10);
+      const st = window.__talad.state();
+      if (st.units.some((u) => u.team === 'fruit' && u.isBot && u.deadUntilTick === null)) continue;
+      // Both teammates really died through the sim. Check and probe in this
+      // SAME browser task; no live tick can invalidate the no-target window.
+      const btn = document.querySelector<HTMLButtonElement>('#tw-btn-switch');
+      const desc = document.getElementById('tw-switch-desc');
+      return {
+        attempts: attempt + 1,
+        tick: st.tick,
+        aliveFruit: st.units.filter((u) => u.team === 'fruit' && u.deadUntilTick === null).length,
+        controlledId: st.units.find((u) => !u.isBot)?.id ?? null,
+        winner: st.winner,
+        hidden: btn?.hidden ?? null,
+        disabled: btn?.disabled ?? null,
+        describedBy: btn?.getAttribute('aria-describedby') ?? null,
+        descText: desc?.textContent ?? null,
+      };
     }
-  }
-  expect(staged, 'both fruit teammates died in the staged combat').not.toBeNull();
-  expect(staged!.winner).toBeNull();
-  // One atomic read: the state window (every teammate dead) and the button.
-  const probe = await page.evaluate(() => {
-    const st = window.__talad.state();
-    const btn = document.querySelector<HTMLButtonElement>('#tw-btn-switch');
-    const desc = document.getElementById('tw-switch-desc');
-    return {
-      aliveFruit: st.units.filter((u) => u.team === 'fruit' && u.deadUntilTick === null).length,
-      controlledId: st.units.find((u) => !u.isBot)?.id ?? null,
-      winner: st.winner,
-      hidden: btn?.hidden ?? null,
-      disabled: btn?.disabled ?? null,
-      describedBy: btn?.getAttribute('aria-describedby') ?? null,
-      descText: desc?.textContent ?? null,
-    };
+    throw new Error('Both teammates must die within 1200 deterministic staging ticks');
   });
+  expect(probe.attempts).toBeLessThanOrEqual(120);
   expect(probe.winner).toBeNull();
   expect(probe.aliveFruit).toBe(1); // only the controlled body is alive
   expect(probe.controlledId).toBe(0);
@@ -339,11 +330,14 @@ test('no living teammate: switch visible but disabled with the Thai description'
   expect(probe.disabled).toBe(true);
   expect(probe.describedBy).toBe('tw-switch-desc');
   expect(probe.descText).toBe('ไม่มีลูกทีมที่สลับได้');
-  // A click on the disabled button queues nothing: control stays.
-  await switchButton(page)
-    .click({ force: true })
-    .catch(() => {});
-  await page.waitForTimeout(400);
+  // Real pointer press without locator.click's disabled auto-wait/catch.
+  const box = await switchButton(page).boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.evaluate(() => {
+    delete (document as { hidden?: boolean }).hidden;
+  });
+  await expect.poll(async () => (await getState(page)).tick).toBeGreaterThan(probe.tick);
   const st = await getState(page);
   expect(controlledHookUnit(st)?.id).toBe(0);
   expect(st.units.find((u) => u.id === 0)?.isBot).toBe(false);

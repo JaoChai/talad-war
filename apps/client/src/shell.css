@@ -906,11 +906,11 @@ body {
   }
 }
 
-/* Owner-approved B dock for narrow landscape: the class tray occupies
+/* Owner-approved B dock for narrow landscape / the <=350px command row:
    left16/top56; keep the full loadout immediately beside it and fetch below
    the rightmost command (global right10/top122). The command parent can be
    0×0, so these offsets are relative to its right10/top56 origin. */
-@media (max-width: 700px) and (orientation: landscape) {
+@media (max-width: 700px) and (orientation: landscape), (max-height: 350px) and (min-width: 600px) {
   .tw-loadout {
     left: 304px;
     top: 52px;

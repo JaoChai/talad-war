@@ -140,8 +140,9 @@
   line-height: 16px;
 }
 
-/* Short-landscape / narrow: 280 px tray, 4 px gaps, 60×72 buttons, 14/20. */
-@media (max-width: 740px) {
+/* Short-landscape / narrow: 280 px tray, 4 px gaps, 60×72 buttons, 14/20.
+   Match the dock/command-row band too: the loadout starts at x304 there. */
+@media (max-width: 740px), (max-height: 350px) and (min-width: 600px) {
   #tw-class-pick {
     width: 280px;
   }
@@ -206,9 +207,10 @@
   cursor: default;
 }
 
-/* Owner-approved B exception: retain all target/icon/header sizes, re-dock
-   only <=700px landscape. #app beats shell.css's older narrow tray nudge. */
-@media (max-width: 700px) and (orientation: landscape) {
+/* Owner-approved B dock: Lead also includes the <=350px command-row band,
+   so browser bars cannot leave fetch behind the tray on wider phones.
+   #app beats shell.css's older narrow tray nudge. */
+@media (max-width: 700px) and (orientation: landscape), (max-height: 350px) and (min-width: 600px) {
   #app #tw-class-pick {
     left: max(var(--tw-r2-space-4), env(safe-area-inset-left));
     top: max(56px, calc(env(safe-area-inset-top) + 56px));
