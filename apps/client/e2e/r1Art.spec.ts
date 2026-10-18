@@ -236,8 +236,9 @@ test.describe('R1 art', () => {
       expect(base.texture).toBe(wantLower);
       expect(top.texture).toBe(wantUpper);
       expect(base.y - top.y).toBe(38);
-      expect(base.width).toBe(59);
-      expect(top.width).toBe(59);
+      // Phaser reports width as scale*texture and picks up 1-ulp float error.
+      expect(base.width).toBeCloseTo(59, 4);
+      expect(top.width).toBeCloseTo(59, 4);
     });
   }
 

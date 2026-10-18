@@ -102,7 +102,9 @@ test('fresh storage: Title, skippable how-to, scored Results, replay tick zero w
   // Every stepped tick feeds stats, including fastForward's multi-tick loop.
   const seed = (await getState(page)).seed;
   const stats = await finish(page, 'fruit', 1600);
-  expect(stats.dessert.stallDamage).toBe(883);
+  // 1160: deterministic scripted-run total on the R2b 2.2 pads (was 883 on the
+  // 1.5 pads — walk distances to the stalls changed with the geometry).
+  expect(stats.dessert.stallDamage).toBe(1160);
   expect(stats.fruit.cratesPlaced + stats.dessert.cratesPlaced).toBeGreaterThan(0);
   expect(stats.fruit.itemsBuilt + stats.dessert.itemsBuilt).toBeGreaterThan(0);
   expect(stats.fruit.stallDamage + stats.dessert.stallDamage).toBeGreaterThan(0);
@@ -114,7 +116,7 @@ test('fresh storage: Title, skippable how-to, scored Results, replay tick zero w
       );
     }
   }
-  await expect(page.locator('[data-team="dessert"] [data-stat="stallDamage"]')).toHaveText('883');
+  await expect(page.locator('[data-team="dessert"] [data-stat="stallDamage"]')).toHaveText('1160');
   await screenCheck(page, info, 'results');
   await page.clock.install();
   await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
