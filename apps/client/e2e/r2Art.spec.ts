@@ -499,7 +499,11 @@ test.describe('R2 class art clip', () => {
       page,
       `scene.sys.sceneUpdate = scene.update = () => {
       const {prev, cur} = window.__r2Frames;
-      window.__talad.renderSnapshot(prev, cur, 1);
+      const realNow = scene.time.now;
+      // This renderer-only clip owns its attack clock, not the game/RAF clock.
+      if (scene.__r2ClipNow !== undefined) scene.time.now = scene.__r2ClipNow;
+      try { window.__talad.renderSnapshot(prev, cur, 1); }
+      finally { scene.time.now = realNow; }
     };
     // Phaser 4 does not guarantee the sceneUpdate hook swap fires, so drive
     // the continuous render with a real-RAF loop for wall-clock motion.
@@ -561,27 +565,32 @@ test.describe('R2 class art clip', () => {
     expect(carry.playing).toBe(false);
     expect(carry.crateY).toBeGreaterThan(0);
     expect(carry.y - carry.crateY).toBeGreaterThan(40);
-    await page.evaluate(() => {
-      const cur = window.__r2Frames.cur;
-      const prev = structuredClone(cur);
-      prev.units[0]!.attackCooldownTicks = 0;
-      cur.units[0]!.attackCooldownTicks = 30;
-      window.__r2Frames.prev = prev;
-    });
-    // The RAF loop advances the clip a fixed step per tick, so the frame at a
-    // fixed wall-time wait depends on machine cadence (slower CI runners land
-    // outside the window — seen in CI run 39048721515). Poll until the slap
-    // anim reaches the windup/slap cells instead of sampling once.
-    await expect
-      .poll(
-        async () => {
-          const f = (await probe()).frame;
-          return [14, 15].includes(f) ? 'slap-window' : `frame-${f}`;
-        },
-        { timeout: 3_000, intervals: [50] },
-      )
-      .toBe('slap-window');
+    // Stage and capture in ONE browser task: a protocol round trip can miss
+    // the entire 220ms attack window. Hold the renderer-only clock during the
+    // recorded pose, without modifying production timing or global RAF.
+    const attack = await inMatch(
+      page,
+      `const cur = window.__r2Frames.cur;
+       const prev = structuredClone(cur);
+       prev.units[0].attackCooldownTicks = 0;
+       cur.units[0].attackCooldownTicks = 30;
+       cur.tick++;
+       window.__r2Frames.prev = prev;
+       scene.__r2ClipNow = scene.time.now;
+       scene.update();
+       const windup = window.__talad.artFeedback().sprites.find(s => s.name === 'unit-0').frame;
+       scene.__r2ClipNow += 165;
+       scene.update();
+       const slap = window.__talad.artFeedback().sprites.find(s => s.name === 'unit-0').frame;
+       return { windup, slap };`,
+    );
+    expect(attack.windup).toBe(14);
+    expect(attack.slap).toBe(15);
+    expect([14, 15].includes(attack.slap) ? 'slap-window' : `frame-${attack.slap}`).toBe(
+      'slap-window',
+    );
     await page.waitForTimeout(550);
+    await inMatch(page, 'delete scene.__r2ClipNow; scene.update();');
     const sprites = await page.evaluate(() => window.__talad.artFeedback().sprites);
     const head = sprites.find((s) => s.name === 'unit-0-head');
     expect(head, 'healer head rendered through the clip').toBeDefined();

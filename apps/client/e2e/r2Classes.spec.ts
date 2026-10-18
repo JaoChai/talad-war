@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { enterMatch, controlledHookUnit, getState } from './helpers';
+import { enterMatch, controlledHookUnit, getState, finishOpening } from './helpers';
 import type { HookState } from './helpers';
 import { className } from '../src/i18n/th';
 
@@ -324,11 +324,10 @@ test('full team: no tray, Thai ทีมเต็มแล้ว preview, and no
       window.__talad.placeUnit(0, crate!.pos.x, crate!.pos.y);
     });
     await page.keyboard.press('KeyE'); // ordinary open on a buddy wall
-    await expect
-      .poll(async () => (await getState(page)).units.filter((u) => u.team === 'fruit').length, {
-        timeout: 5_000,
-      })
-      .toBe(3 + round + 1);
+    await finishOpening(page); // real acceptance, then the remaining channel ticks
+    expect((await getState(page)).units.filter((u) => u.team === 'fruit')).toHaveLength(
+      3 + round + 1,
+    );
   }
   const full = await getState(page);
   expect(full.units.filter((u) => u.team === 'fruit')).toHaveLength(5); // TEAM_CAP

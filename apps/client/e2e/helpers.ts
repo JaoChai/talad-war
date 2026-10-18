@@ -136,6 +136,85 @@ export async function getState(page: Page): Promise<HookState> {
   return page.evaluate(() => window.__talad.state());
 }
 
+/** Observe a REAL open request before advancing its remaining sim ticks. */
+export async function finishOpening(page: Page): Promise<void> {
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = window.__talad.state();
+        const opening = state.pads.fruit!.opening;
+        if (opening === null) return false;
+        window.__talad.fastForward(Math.max(0, opening.doneTick - state.tick));
+        return true;
+      }),
+    )
+    .toBe(true);
+}
+
+/**
+ * Sample the actual keyboard/touch/R2 merge and use the existing stepInputs
+ * hook. CDP accesses the scene only in this test utility; no production API.
+ * Optional enemy re-docking is deterministic staging, never synthetic fire:
+ * removing the real pointer handler must still leave the enemy unharmed.
+ */
+export async function stepRealInputs(
+  page: Page,
+  ticks: number,
+  adjacentEnemyId?: number,
+): Promise<HookState> {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    const hook = await cdp.send('Runtime.evaluate', { expression: 'window.__talad.artFeedback' });
+    const details = await cdp.send('Runtime.getProperties', { objectId: hook.result.objectId! });
+    const scopes = details.internalProperties!.find((p) => p.name === '[[Scopes]]')!;
+    const list = await cdp.send('Runtime.getProperties', {
+      objectId: scopes.value!.objectId!,
+      ownProperties: true,
+    });
+    const module = list.result.find((p) => p.value?.description === 'Module')!;
+    const bindings = await cdp.send('Runtime.getProperties', {
+      objectId: module.value!.objectId!,
+      ownProperties: true,
+    });
+    for (const binding of bindings.result.filter((p) => p.value?.objectId)) {
+      const prototype = await cdp.send('Runtime.callFunctionOn', {
+        objectId: binding.value!.objectId!,
+        functionDeclaration: 'function() { return this?.Game?.prototype; }',
+      });
+      if (!prototype.result.objectId) continue;
+      const games = await cdp.send('Runtime.queryObjects', {
+        prototypeObjectId: prototype.result.objectId,
+      });
+      const result = await cdp.send('Runtime.callFunctionOn', {
+        objectId: games.objects.objectId!,
+        functionDeclaration: `function(ticks, enemyId) {
+          const game = this.find(g => g.scene?.isActive('match'));
+          if (!game) return null;
+          const scene = game.scene.getScene('match');
+          for (let i = 0; i < ticks; i++) {
+            if (enemyId !== null) {
+              const s = window.__talad.state();
+              const me = s.units.find(u => !u.isBot);
+              const enemy = s.units.find(u => u.id === enemyId);
+              if (!me || !enemy) throw new Error('Combat staging unit missing');
+              window.__talad.placeUnit(enemyId, me.pos.x + 0.6, me.pos.y);
+            }
+            window.__talad.stepInputs(Array.from(scene.humanInputs()));
+          }
+          return window.__talad.state();
+        }`,
+        arguments: [{ value: ticks }, { value: adjacentEnemyId ?? null }],
+        returnByValue: true,
+      });
+      if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
+      if (result.result.value) return result.result.value as HookState;
+    }
+    throw new Error('Live match scene not found for real-input stepping');
+  } finally {
+    await cdp.detach();
+  }
+}
+
 export function padCrateCount(st: HookState): number {
   return (st.pads.fruit?.cells ?? []).reduce(
     (n, col) => n + col.filter((c) => c !== null).length,

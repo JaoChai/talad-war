@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
-import { enterMatch, controlledHookUnit, getState, joyDriver } from './helpers';
+import {
+  enterMatch,
+  controlledHookUnit,
+  getState,
+  joyDriver,
+  finishOpening,
+  stepRealInputs,
+} from './helpers';
 import type { HookState, HookUnit } from './helpers';
 
 /**
@@ -111,9 +118,8 @@ test('loadout and the white ring bind to the new body, not the released one', as
     window.__talad.placeUnit(0, crate!.pos.x, crate!.pos.y);
   });
   await page.keyboard.press('KeyE'); // ordinary open on a bombs wall
-  await expect
-    .poll(async () => (await getState(page)).units.find((u) => u.id === 0)?.bombs)
-    .toBeGreaterThan(0);
+  await finishOpening(page); // do not confuse slow live ticks with a rejected input
+  expect((await getState(page)).units.find((u) => u.id === 0)?.bombs).toBeGreaterThan(0);
   expect(await loadoutLabel(page)).toContain('ระเบิด');
   const ringOn0 = await ringPos(page);
   // Switch: unit 1 is empty-handed and elsewhere — loadout and ring follow it.
@@ -384,22 +390,16 @@ test('journey: recruit a super class, switch to it, use its ability, die, respaw
   for (let i = 0; i < 6; i++) {
     controlled = controlledHookUnit(await getState(page)) ?? undefined;
     if (controlled?.classId === 'boxer') break;
+    const fromId = controlled!.id;
     await page.keyboard.press('KeyR');
-    await page.waitForTimeout(250);
+    await expect.poll(async () => controlledHookUnit(await getState(page))?.id).not.toBe(fromId);
   }
   controlled = controlledHookUnit(await getState(page)) ?? undefined;
   expect(controlled?.classId).toBe('boxer');
   const boxerId = controlled!.id;
-  // Hold fire, then re-dock the enemy repeatedly DURING the hold: a staged
-  // dessert bot sprints back to its post at ~9 u/s (measured), so it leaves
-  // SLAP_RANGE (1.2) within ~70 ms of any placement. With fire held, each
-  // re-dock is followed by a slap tick within ≤50 ms and the slap (instant,
-  // nearest enemy in range) lands. Touch: the Fire button is the real
-  // per-device path (no cursor; sim autoAim targets the nearest living
-  // enemy). Desktop: aim the mouse AT the enemy through the canvas box. The
-  // previous form aimed at the boxer with a dropped canvas offset — on touch
-  // its mouse.down landed on the joystick zone and never fired at all — and
-  // its unitFeedback(0) + stale-snapshot hp comparison could not fail.
+  // Keep the real per-device fire press. Sample its production input merge
+  // and re-dock/step atomically below: a 150ms wall wait can contain NO tick
+  // on a starved runner, or let the enemy sprint out of range before a tick.
   const enemy = await stageAdjacentEnemy(page, controlled!);
   const enemyHp0 = (await getState(page)).units.find((u) => u.id === enemy.id)!.hp;
   const attackAt0 = await page.evaluate((id) => window.__talad.unitFeedback(id).attackAt, boxerId);
@@ -422,24 +422,20 @@ test('journey: recruit a super class, switch to it, use its ability, die, respaw
     );
     await page.mouse.down();
   }
-  for (let i = 0; i < 5; i++) {
-    await page.evaluate(({ id, x, y }) => window.__talad.placeUnit(id, x, y), {
-      id: enemy.id,
-      x: controlled!.pos.x + 0.6,
-      y: controlled!.pos.y,
-    });
-    await page.waitForTimeout(150);
+  // Forty real-input ticks cover the existing slap cooldown without waiting
+  // for renderer cadence. No synthetic fire:true or fabricated combat event.
+  let struck: HookState;
+  try {
+    struck = await stepRealInputs(page, 40, enemy.id);
+  } finally {
+    await page.mouse.up();
   }
-  await page.mouse.up();
-  // The switched body attacked, and a FRESH state read shows the enemy lost hp.
-  await expect
-    .poll(async () => page.evaluate((id) => window.__talad.unitFeedback(id).attackAt, boxerId), {
-      timeout: 3_000,
-    })
-    .toBeGreaterThan(attackAt0);
-  await page.waitForTimeout(200); // let any in-flight swing resolve
-  const enemyHp = (await getState(page)).units.find((u) => u.id === enemy.id)?.hp ?? 0;
-  expect(enemyHp, 'enemy hp dropped below the pre-slap value').toBeLessThan(enemyHp0);
+  expect(
+    await page.evaluate((id) => window.__talad.unitFeedback(id).attackAt, boxerId),
+  ).toBeGreaterThan(attackAt0);
+  const struckEnemy = struck.units.find((u) => u.id === enemy.id);
+  expect(struckEnemy, 'the enemy is present in the fresh post-step state').toBeDefined();
+  expect(struckEnemy!.hp, 'enemy hp dropped below the pre-slap value').toBeLessThan(enemyHp0);
   // Death: park the CONTROLLED boxer on a dessert guard post. The post's bot
   // holds position (guard), so SLAP_RANGE adjacency is sustained and it slaps
   // the idle boxer down; the boxer never fights back and no team pushes a
