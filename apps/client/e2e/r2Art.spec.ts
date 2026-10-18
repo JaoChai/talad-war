@@ -168,7 +168,14 @@ async function stageMatch(page: Page): Promise<void> {
     `scene.sys.sceneUpdate = scene.update = () => {
     const {prev, cur} = window.__r2Frames;
     window.__talad.renderSnapshot(prev, cur, 1);
-  }; scene.update();`,
+  }; scene.update();
+  // Entry can already have advanced idle to frame 1 before the clock pauses.
+  // Establish this renderer fixture's animation epoch, not a new game policy.
+  for (const unit of window.__r2Frames.cur.units) {
+    const body = scene.children.getByName('unit-' + unit.id);
+    if (body?.anims.isPlaying) body.anims.restart();
+  }
+  scene.update();`,
   );
 }
 
@@ -210,10 +217,15 @@ test.describe('R2 class art', () => {
     expect(head.y).toBeCloseTo(want.y, 4);
     expect(head.width).toBeCloseTo(want.width, 4);
     expect(head.height).toBeCloseTo(want.height, 4);
-    // Controlled animation-clock advancement: idle runs at 6 fps, so one run
-    // of a frame period lands frame 1 and the head must ride its landmark.
-    await page.clock.runFor(1000 / 6);
-    const advanced = await sprites(page);
+    // Advance the real sprite animation by exactly one 6fps frame period.
+    // Phaser smooths RAF deltas, so browser-clock runFor is not this clock.
+    // Resync and capture in the same paused task; never set the expected frame.
+    const advanced = (await inMatch(
+      page,
+      `scene.children.getByName('unit-0').preUpdate(scene.time.now, 1000 / 6);
+       scene.update();
+       return window.__talad.artFeedback().sprites;`,
+    )) as Awaited<ReturnType<typeof sprites>>;
     const head1 = find(advanced, 'unit-0-head');
     const body1 = find(advanced, 'unit-0');
     expect(body1.frame).toBe(1);
