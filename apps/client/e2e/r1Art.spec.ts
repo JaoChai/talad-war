@@ -246,7 +246,7 @@ test.describe('R1 art', () => {
   test('on-pad crates sit at the painted art cell centres (R2b round 2)', async ({ page }) => {
     await page.evaluate(() => {
       const cur = window.__r1Frames.cur;
-      cur.crates = [910, 911, 912, 913].map((id, col) => ({
+      cur.crates = [910, 911, 912, 913].map((id) => ({
         id,
         kind: 'normal',
         state: 'onPad',
