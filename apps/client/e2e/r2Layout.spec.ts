@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { enterMatch, getState } from './helpers';
+import { controlledHookUnit, enterMatch, getState } from './helpers';
 
 /**
  * R2-11 layout contract (plan §5): tray + switch positions, sizes and pairwise
@@ -45,25 +45,29 @@ async function stageTray(page: Page, seed = 1): Promise<void> {
 async function measure(page: Page, names: [string, string][]): Promise<Box[]> {
   return page.evaluate(
     (pairs) =>
-      pairs
-        .map(([name, selector]) => {
-          const el = document.querySelector(selector);
-          if (!el) return null;
-          const r = el.getBoundingClientRect();
-          if (r.width === 0 && r.height === 0) return null;
-          return {
-            name,
-            x: r.x,
-            y: r.y,
-            right: r.right,
-            bottom: r.bottom,
-            width: r.width,
-            height: r.height,
-          };
-        })
-        .filter((b): b is Box => b !== null),
+      pairs.map(([name, selector]) => {
+        const el = document.querySelector(selector);
+        if (!el) throw new Error(`Expected control missing: ${name} (${selector})`);
+        const r = el.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) {
+          throw new Error(`Expected control has an empty box: ${name} (${selector})`);
+        }
+        return {
+          name,
+          x: r.x,
+          y: r.y,
+          right: r.right,
+          bottom: r.bottom,
+          width: r.width,
+          height: r.height,
+        };
+      }),
     names,
   );
+}
+
+function gap(a: Box, b: Box): number {
+  return Math.max(b.x - a.right, a.x - b.right, b.y - a.bottom, a.y - b.bottom);
 }
 
 /** §5 contract: inside the viewport, pairwise disjoint (siblings only), sizes per breakpoint. */
@@ -171,10 +175,192 @@ async function assertTrayHittable(page: Page): Promise<void> {
 const MATCH_CONTROLS: [string, string][] = [
   ['tray', '#tw-class-pick'],
   ['switch', '#tw-btn-switch'],
-  ['commands', '.tw-commands'],
+  ['attack', '#tw-cmd-attack'],
+  ['guard', '#tw-cmd-guard'],
+  ['fetch', '#tw-cmd-fetch'],
   ['loadout', '.tw-loadout'],
   ['timer', '.tw-timer'],
 ];
+
+/** Throw is legitimately hidden without bombs; expected controls are never dropped. */
+async function touchControls(page: Page): Promise<[string, string][]> {
+  const controls: [string, string][] = [
+    ['fire', '#tw-btn-fire'],
+    ['pick', '#tw-btn-pick'],
+  ];
+  const source = controlledHookUnit(await getState(page));
+  expect(source, 'controlled unit present').toBeDefined();
+  if (source!.bombs > 0) controls.push(['throw', '#tw-btn-throw']);
+  else await expect(page.locator('#tw-btn-throw')).toBeHidden();
+  return controls;
+}
+
+async function assertCommandsHittable(page: Page): Promise<void> {
+  for (const cmd of ['attack', 'guard', 'fetch']) {
+    const button = page.locator(`#tw-cmd-${cmd}`);
+    await expect(button).toBeVisible();
+    const hit = await button.evaluate((el) => {
+      const b = el.getBoundingClientRect();
+      const target = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
+      return { inside: target !== null && el.contains(target), target: target?.outerHTML };
+    });
+    expect(hit.inside, `${cmd} command centre blocked by ${hit.target}`).toBe(true);
+  }
+}
+
+test('switch label stays on one line inside its button at all three sizes', async ({
+  page,
+}, info) => {
+  for (const [width, height] of info.project.name === 'desktop'
+    ? [[1280, 800]]
+    : [
+        [844, 390],
+        [667, 320],
+      ]) {
+    await page.setViewportSize({ width: width!, height: height! });
+    await stageTray(page);
+    await page.evaluate(() => document.fonts.ready);
+    const label = await page.locator('.tw-switch-label').evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const rects = [...range.getClientRects()];
+      const button = el.closest('button')!.getBoundingClientRect();
+      return {
+        text: el.textContent,
+        lines: new Set(rects.map((r) => r.top)).size,
+        inside: rects.every((r) => r.left >= button.left && r.right <= button.right),
+        childrenInside: [...el.parentElement!.children].every((child) => {
+          const r = child.getBoundingClientRect();
+          return r.left >= button.left && r.right <= button.right;
+        }),
+      };
+    });
+    expect(label.text).toBe('สลับตัว');
+    expect(label.lines, `${width}: switch label must not wrap`).toBe(1);
+    expect(label.inside, `${width}: full Thai label inside switch`).toBe(true);
+    expect(label.childrenInside, `${width}: icon, label and R hint inside switch`).toBe(true);
+  }
+});
+
+test('loaded tray clears every real control at 667, 844 and desktop', async ({ page }, info) => {
+  for (const [width, height] of info.project.name === 'desktop'
+    ? [[1280, 800]]
+    : [
+        [844, 390],
+        [667, 320],
+      ]) {
+    await page.setViewportSize({ width: width!, height: height! });
+    await stageTray(page);
+    // Craft bombs through the real channel: renderSnapshot updates the HUD,
+    // but deliberately does not mutate the live touch-control bomb count.
+    await page.evaluate(() =>
+      window.__talad.setPadLayout('fruit', [
+        { col: 0, layer: 0, kind: 'super' },
+        { col: 1, layer: 0 },
+      ]),
+    );
+    await page.keyboard.press('KeyE');
+    await expect.poll(async () => (await getState(page)).pads.fruit!.opening !== null).toBe(true);
+    await page.evaluate(() => window.__talad.fastForward(25));
+    await expect.poll(async () => controlledHookUnit(await getState(page))!.bombs).toBe(5);
+    await page.evaluate(() =>
+      window.__talad.setPadLayout('fruit', [
+        { col: 0, layer: 0, kind: 'super' },
+        { col: 0, layer: 1 },
+        { col: 1, layer: 0 },
+        { col: 1, layer: 1 },
+      ]),
+    );
+    // Visual fixtures only: exercise the real HUD with all independent slot
+    // combinations, not synthetic gameplay events. Pause before renderSnapshot
+    // so live sync cannot overwrite the fixture between measurements.
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    });
+    for (const primary of ['gun', 'heavy', 'crate'] as const) {
+      for (const quality of [false, true]) {
+        await page.evaluate(
+          ({ primary, quality }) => {
+            const s = window.__talad.state() as import('@talad/sim').MatchState;
+            const u = s.units.find((u) => !u.isBot)!;
+            u.gun =
+              primary === 'crate' ? null : { kind: primary, super: quality, ammoCooldownTicks: 0 };
+            u.bombs = quality ? 5 : 3;
+            u.bombsSuper = quality;
+            u.carrying = primary === 'crate' ? s.crates[0]!.id : null;
+            if (primary === 'crate') s.crates[0]!.kind = quality ? 'super' : 'normal';
+            window.__talad.renderSnapshot(s, s, 1);
+          },
+          { primary, quality },
+        );
+        const choosing = primary !== 'crate'; // carrying prevents opening a recipe
+        if (!choosing) await expect(tray(page)).toBeHidden();
+        const boxes = await measure(page, [
+          ...MATCH_CONTROLS.filter(([name]) => choosing || name !== 'tray'),
+          ...(choosing
+            ? ([['classBtn', '#tw-class-pick button.tw-class-btn']] as [string, string][])
+            : []),
+          ...(info.project.name === 'mobile-landscape'
+            ? ([
+                ['fire', '#tw-btn-fire'],
+                ['pick', '#tw-btn-pick'],
+                ['throw', '#tw-btn-throw'],
+              ] as [string, string][])
+            : []),
+        ]);
+        assertLayout(boxes, width!, height!, width === 667);
+        if (choosing) {
+          const trayBox = boxes.find((b) => b.name === 'tray')!;
+          for (const b of boxes.filter((b) => b.name !== 'tray' && b.name !== 'classBtn')) {
+            expect(
+              gap(trayBox, b),
+              `${width} ${primary}/${quality}: tray↔${b.name}`,
+            ).toBeGreaterThanOrEqual(8);
+          }
+          const label = (await measure(page, [['preview', '.tw-preview']]))[0]!;
+          expect(gap(trayBox, label), `${width}: tray↔pad preview`).toBeGreaterThanOrEqual(8);
+          await assertTrayHittable(page);
+        }
+        const loadout = boxes.find((b) => b.name === 'loadout')!;
+        const fetch = boxes.find((b) => b.name === 'fetch')!;
+        expect(
+          gap(loadout, fetch),
+          `${width} ${primary}/${quality}: loadout↔fetch`,
+        ).toBeGreaterThanOrEqual(8);
+        await assertCommandsHittable(page);
+      }
+    }
+    await page.evaluate(() => {
+      delete (document as { hidden?: boolean }).hidden;
+    });
+  }
+});
+
+test('all three command centres stay tappable with the tray shown at 844 and 667', async ({
+  page,
+}, info) => {
+  test.skip(info.project.name !== 'mobile-landscape', 'touch command path');
+  await stageTray(page);
+  for (const [width, height] of [
+    [844, 390],
+    [667, 320],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await expect(tray(page)).toBeVisible();
+    await assertCommandsHittable(page);
+  }
+});
+
+test('667×320: the loadout clears the fetch command by at least 8 px', async ({ page }, info) => {
+  test.skip(info.project.name !== 'mobile-landscape', 'touch command path');
+  await page.setViewportSize({ width: 667, height: 320 });
+  await stageTray(page);
+  const [loadout, fetch] = await measure(page, [
+    ['loadout', '.tw-loadout'],
+    ['fetch', '#tw-cmd-fetch'],
+  ]);
+  expect(gap(loadout!, fetch!), 'loadout-to-fetch clearance').toBeGreaterThanOrEqual(8);
+});
 
 test('844×390: tray and switch sizes, clearances and Thai names', async ({ page }) => {
   test.skip(page.viewportSize()!.width !== 844, 'runs on the native mobile-landscape project');
@@ -182,9 +368,7 @@ test('844×390: tray and switch sizes, clearances and Thai names', async ({ page
   const boxes = await measure(page, [
     ...MATCH_CONTROLS,
     ['classBtn', '#tw-class-pick button.tw-class-btn'],
-    ['fire', '#tw-btn-fire'],
-    ['pick', '#tw-btn-pick'],
-    ['throw', '#tw-btn-throw'],
+    ...(await touchControls(page)),
   ]);
   assertLayout(boxes, 844, 390, false);
   await assertTrayHittable(page);
@@ -208,9 +392,7 @@ test('667×320: narrow tray (280px), 60×72 buttons and ≥8 px clearance to Pic
   const boxes = await measure(page, [
     ...MATCH_CONTROLS,
     ['classBtn', '#tw-class-pick button.tw-class-btn'],
-    ['fire', '#tw-btn-fire'],
-    ['pick', '#tw-btn-pick'],
-    ['throw', '#tw-btn-throw'],
+    ...(await touchControls(page)),
   ]);
   assertLayout(boxes, 667, 320, true);
   const byName = new Map(boxes.map((b) => [b.name, b]));

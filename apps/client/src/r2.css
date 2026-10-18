@@ -161,15 +161,9 @@
   }
 }
 
-/* Short landscape screens (844×390, 667×320, …): the touch pad and its
-   preview label ride the canvas FIT at ~62% of the viewport height, so the §5
-   bottom-16px tray covered the label and the pad crates (55%/71% measured at
-   96dff73). Lift the tray on short landscape viewports only: bottom 41vh puts
-   its lower edge ~9px above the label at 667×320 and ~19px above it at
-   844×390, ≥8px below the loadout, and clear of the crates, switch, commands
-   and action buttons (asserted in r2Layout.spec). Horizontal centring, width
-   and all pinned sizes stay unchanged; taller/desktop screens keep the §5
-   bottom placement. */
+/* On short landscape screens the centred tray sits above the pad preview.
+   <=700px needs the separately owner-approved dock below: a 118px tray
+   cannot fit between the command row and preview at 667×320. */
 @media (max-height: 480px) and (orientation: landscape) {
   #tw-class-pick {
     bottom: max(41vh, env(safe-area-inset-bottom));
@@ -188,7 +182,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--tw-r2-space-2);
+  gap: var(--tw-r2-space-1);
+  padding: var(--tw-r2-space-1);
   background: var(--tw-r2-panel);
   color: var(--tw-r2-text);
   border: 2px solid var(--tw-r2-ink);
@@ -209,6 +204,28 @@
 #tw-btn-switch:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* Owner-approved B exception: retain all target/icon/header sizes, re-dock
+   only <=700px landscape. #app beats shell.css's older narrow tray nudge. */
+@media (max-width: 700px) and (orientation: landscape) {
+  #app #tw-class-pick {
+    left: max(var(--tw-r2-space-4), env(safe-area-inset-left));
+    top: max(56px, calc(env(safe-area-inset-top) + 56px));
+    bottom: auto;
+    transform: none;
+  }
+
+  #tw-btn-switch {
+    top: auto;
+    bottom: max(var(--tw-r2-space-4), env(safe-area-inset-bottom));
+  }
+}
+
+/* Fit the complete Thai word, icon and R hint inside the fixed 112px button. */
+.tw-switch-label {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .tw-switch-icon {
