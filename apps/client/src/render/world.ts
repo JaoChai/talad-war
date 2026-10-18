@@ -41,7 +41,7 @@ export function padCellOffset(col: number): Vec2 {
   return { x: (cellX + 0.5) * PAD_CELL_SIZE, y: (cellY + 0.5) * PAD_CELL_SIZE };
 }
 
-/** World-space center of the 3x3 pad rect, relative to the pad origin. */
+/** World-space center of the PAD_FLOOR×PAD_FLOOR pad rect, relative to the origin. */
 export function padCenterOffset(): Vec2 {
   const half = (PAD_FLOOR * PAD_CELL_SIZE) / 2;
   return { x: half, y: half };
