@@ -60,3 +60,49 @@ export const ON_PAD_CRATE_WIDTH = Math.round(0.9 * PAD_CELL_SIZE * STAGE_SCALE);
  * like one crate with a visible top step.
  */
 export const ON_PAD_STACK_OFFSET = Math.round(ON_PAD_CRATE_WIDTH * (22 / 34));
+
+/**
+ * R2b round 2 (Lead finding 22:11): crates rest on the PAINTED cells of the
+ * pad art, not on the world-rect cell span — sizeProp draws the ~370x220 art
+ * at 132x78.5 with the origin anchor at 35% of the frame, so the world-rect
+ * span (±33 px in y from the pad centre) put the back row above the art.
+ *
+ * The painted 2x2 floor is an iso diamond (tiles at N/E/S/W). Tile centroids
+ * were measured once per art by connected-component analysis of the painted
+ * pixels; fruit and dessert agree within ~2 art px, so one table serves both
+ * teams (worst per-team deviation <= 1 stage px at scale 132/370):
+ *   fruit  col0 (189.4,44.7) col1 (256.9,79.6) col2 (109.0,74.3) col3 (175.2,111.5)
+ *   dessert col0 (191.7,44.2) col1 (257.4,79.7) col2 (110.2,75.5) col3 (175.9,111.1)
+ */
+const PAD_ART_TILE_CENTRES: Readonly<Vec2[]> = [
+  { x: 190.6, y: 44.5 }, // col0 back tile
+  { x: 257.2, y: 79.7 }, // col1 right tile
+  { x: 109.6, y: 74.9 }, // col2 left tile
+  { x: 175.6, y: 111.3 }, // col3 front tile
+];
+
+/** The pad sprite origin (0.5, 0.35) expressed in art pixels of the ~370x220 frame. */
+const PAD_ART_ORIGIN_PX: Vec2 = { x: 185.3, y: 77.2 };
+
+/** Stage-space offset from the pad centre to painted cell `col`'s centre. */
+export function padPaintedCellStageOffset(col: number): Vec2 {
+  const art = PAD_ART_TILE_CENTRES[col];
+  if (!art) throw new Error(`pad col ${col} is outside the 2x2 painted floor`);
+  const scale = (PAD_FLOOR * PAD_CELL_SIZE * STAGE_SCALE) / 370;
+  return {
+    x: Math.round((art.x - PAD_ART_ORIGIN_PX.x) * scale),
+    y: Math.round((art.y - PAD_ART_ORIGIN_PX.y) * scale),
+  };
+}
+
+/** Absolute stage position of painted pad cell `col` for a pad at `padOrigin`. */
+export function padPaintedCellStagePos(padOrigin: Vec2, col: number): Vec2 {
+  const centre = worldToStage({
+    x: padOrigin.x + padCenterOffset().x,
+    y: padOrigin.y + padCenterOffset().y,
+  });
+  const off = padPaintedCellStageOffset(col);
+  // Round the composed point: worldToStage introduces float noise (e.g. 3.8*30)
+  // and the crate sprites sit on whole stage pixels in every pinned fixture.
+  return { x: Math.round(centre.x + off.x), y: Math.round(centre.y + off.y) };
+}

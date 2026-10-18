@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { MatchState } from '@talad/sim';
 import type { TaladTestHooks } from '../src/testHooks';
+import { padPaintedCellStagePos } from '../src/render/world';
 import { waitHooks } from './helpers';
 
 type Frames = { prev: MatchState; cur: MatchState };
@@ -241,6 +242,34 @@ test.describe('R1 art', () => {
       expect(top.width).toBeCloseTo(59, 4);
     });
   }
+
+  test('on-pad crates sit at the painted art cell centres (R2b round 2)', async ({ page }) => {
+    await page.evaluate(() => {
+      const cur = window.__r1Frames.cur;
+      cur.crates = [910, 911, 912, 913].map((id, col) => ({
+        id,
+        kind: 'normal',
+        state: 'onPad',
+        pos: { x: 0, y: 0 },
+        landTick: 0,
+      }));
+      cur.pads.fruit.cells = [[910], [911], [912], [913]];
+      window.__talad.renderSnapshot(cur, cur, 1);
+    });
+    const origin = await page.evaluate(() =>
+      (window.__talad as unknown as TaladTestHooks).state().pads.fruit.origin,
+    );
+    const ss = await sprites(page);
+    // Lead finding 22:11: each crate must sit on the PAINTED tile of the pad
+    // art (iso diamond N/E/S/W), not the world-rect cell span that drew the
+    // back row above the art.
+    for (const col of [0, 1, 2, 3]) {
+      const s = ss.find((q) => q.name === `crate-${910 + col}`)!;
+      const want = padPaintedCellStagePos(origin, col);
+      expect(s.x, `col${col} x`).toBe(want.x);
+      expect(s.y, `col${col} y`).toBe(want.y);
+    }
+  });
 
   test('top-edge super carrier fits the entire real cargo art inside the 720 stage', async ({
     page,

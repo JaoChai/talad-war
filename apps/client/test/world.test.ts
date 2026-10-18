@@ -8,6 +8,8 @@ import {
   clampDrawY,
   padCellOffset,
   padCenterOffset,
+  padPaintedCellStageOffset,
+  padPaintedCellStagePos,
 } from '../src/render/world';
 
 /**
@@ -62,5 +64,24 @@ describe('world mapping guards (review round 1)', () => {
     expect(ON_PAD_STACK_OFFSET).toBe(Math.round(ON_PAD_CRATE_WIDTH * (22 / 34)));
     // R2b values: round(59 * 22 / 34) = 38 px, up from the stale 22 px.
     expect(ON_PAD_STACK_OFFSET).toBe(38);
+  });
+
+  it('places on-pad crates at the painted cell centres of the pad art (R2b round 2)', () => {
+    // Lead finding 22:11: the world-rect cell span (±33 px in y) put the back
+    // row ABOVE the painted art, because sizeProp draws the 370x220 pad at
+    // 132x78.5 with the origin anchor at 35% height. The painted 2x2 floor is
+    // an iso diamond; tile centroids measured once on prop_pad_fruit.webp /
+    // prop_pad_dessert.webp (the two arts agree within ~2 art px, worst team
+    // deviation <= 1 stage px) give these stage offsets from the pad centre:
+    expect(padPaintedCellStageOffset(0)).toEqual({ x: 2, y: -12 }); // back tile
+    expect(padPaintedCellStageOffset(1)).toEqual({ x: 26, y: 1 }); // right tile
+    expect(padPaintedCellStageOffset(2)).toEqual({ x: -27, y: -1 }); // left tile
+    expect(padPaintedCellStageOffset(3)).toEqual({ x: -3, y: 12 }); // front tile
+    // Absolute positions: fruit pad origin (8,18) -> centre (10.2,20.2) ->
+    // worldToStage = (40 + 10.2*30, 20.2*30) = (346,606).
+    expect(padPaintedCellStagePos({ x: 8, y: 18 }, 0)).toEqual({ x: 348, y: 594 });
+    expect(padPaintedCellStagePos({ x: 8, y: 18 }, 3)).toEqual({ x: 343, y: 618 });
+    // Dessert pad origin (27.6,1.6) -> centre (29.8,3.8) -> (934,114).
+    expect(padPaintedCellStagePos({ x: 27.6, y: 1.6 }, 1)).toEqual({ x: 960, y: 115 });
   });
 });

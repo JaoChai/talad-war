@@ -25,8 +25,8 @@ import {
   ON_PAD_STACK_OFFSET,
   STAGE_SCALE,
   clampDrawY,
-  padCellOffset,
   padCenterOffset,
+  padPaintedCellStagePos,
   worldToStage,
 } from './world';
 
@@ -615,8 +615,10 @@ export class MatchView {
         const spot = padOf(crate);
         if (spot) {
           const pad = cur.pads[spot.team];
-          const off = padCellOffset(spot.col); // mirrors sim pad.ts cell math
-          at = worldToStage({ x: pad.origin.x + off.x, y: pad.origin.y + off.y });
+          // R2b round 2: rest the crate on the PAINTED cell of the pad art
+          // (measured tile centroids), not the world-rect cell span that drew
+          // the back row above the art. Sim pad cells are untouched.
+          at = padPaintedCellStagePos(pad.origin, spot.col);
           if (spot.layer === 1) {
             const lowerId = pad.cells[spot.col]![0];
             const lower = cur.crates.find((c) => c.id === lowerId);
