@@ -46,3 +46,17 @@ export function padCenterOffset(): Vec2 {
   const half = (PAD_FLOOR * PAD_CELL_SIZE) / 2;
   return { x: half, y: half };
 }
+
+/**
+ * R2b: a crate resting on a pad fills ~90% of its pad cell (owner mockup for
+ * the enlarged pad), so it reads at ground-crate scale instead of the stale
+ * 34 px literal that A1's 66 px ground crates dwarfed.
+ */
+export const ON_PAD_CRATE_WIDTH = Math.round(0.9 * PAD_CELL_SIZE * STAGE_SCALE);
+
+/**
+ * R2b: layer-1 stack lift above the lower crate, keeping the shipped
+ * 22 px-at-34 px ratio to the crate width so the stacked pair still overlaps
+ * like one crate with a visible top step.
+ */
+export const ON_PAD_STACK_OFFSET = Math.round(ON_PAD_CRATE_WIDTH * (22 / 34));
