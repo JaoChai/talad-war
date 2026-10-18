@@ -5,6 +5,8 @@ import {
   BOMB_THROW_RANGE,
   CENTER_DROP_ZONE,
   HEALER_RADIUS,
+  PAD_CELL_SIZE,
+  PAD_FLOOR,
   PICK_RADIUS,
   SLAP_RANGE,
 } from '../constants';
@@ -624,7 +626,7 @@ function choosePadColumn(pad: Pad, needed: Recipe): number | null {
 }
 
 function rectCenterOfPad(pad: Pad): Vec2 {
-  const half = 1.5; // PAD_FLOOR * PAD_CELL_SIZE / 2
+  const half = 1.5; // TEMP-TOGGLE: old literal for A/B experiment
   return { x: pad.origin.x + half, y: pad.origin.y + half };
 }
 
