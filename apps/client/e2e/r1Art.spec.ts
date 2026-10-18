@@ -187,8 +187,8 @@ test.describe('R1 art', () => {
       [900, 'crate_super_air', 66],
       [901, 'crate_super', 66],
       [902, 'crate_super', 54],
-      [903, 'crate', 34],
-      [904, 'crate_super', 34],
+      [903, 'crate', 59],
+      [904, 'crate_super', 59],
     ] as const) {
       const s = samples.falling.find((s) => s.name === `crate-${id}`)!;
       expect(s.texture).toBe(texture);
@@ -235,9 +235,9 @@ test.describe('R1 art', () => {
       const top = ss.find((s) => s.name === 'crate-901')!;
       expect(base.texture).toBe(wantLower);
       expect(top.texture).toBe(wantUpper);
-      expect(base.y - top.y).toBe(22);
-      expect(base.width).toBe(34);
-      expect(top.width).toBe(34);
+      expect(base.y - top.y).toBe(38);
+      expect(base.width).toBe(59);
+      expect(top.width).toBe(59);
     });
   }
 
