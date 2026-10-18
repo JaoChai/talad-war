@@ -101,6 +101,73 @@ function assertLayout(boxes: Box[], vw: number, vh: number, narrow: boolean): vo
   }
 }
 
+/** Screen positions of the fruit pad's crates (stage 1280×720 canvas mapping). */
+async function padCratePoints(
+  page: Page,
+): Promise<{ id: number; kind: string; x: number; y: number }[]> {
+  return page.evaluate(() => {
+    const c = document.querySelector('canvas')!.getBoundingClientRect();
+    const st = window.__talad.state();
+    const out: { id: number; kind: string; x: number; y: number }[] = [];
+    for (const col of st.pads.fruit!.cells) {
+      for (const id of col) {
+        if (id == null) continue;
+        const cr = st.crates.find((x) => x.id === id);
+        if (!cr) continue;
+        out.push({
+          id,
+          kind: cr.kind,
+          x: c.x + ((40 + cr.pos.x * 30) * c.width) / 1280,
+          y: c.y + (cr.pos.y * 30 * c.height) / 720,
+        });
+      }
+    }
+    return out;
+  });
+}
+
+const boxesOverlap = (
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): boolean =>
+  a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+
+/**
+ * A tray that measures right but is painted under another layer (or at
+ * opacity 0) is invisible to the player: each button's centre must resolve to
+ * that button (or a child) and no ancestor may hide the chain.
+ */
+async function assertTrayHittable(page: Page): Promise<void> {
+  const rows = await page.evaluate(() => {
+    const buttons = [
+      ...document.querySelectorAll('#tw-class-pick button.tw-class-btn'),
+    ] as HTMLElement[];
+    return buttons.map((b) => {
+      const r = b.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      const hidden: string[] = [];
+      for (let n: HTMLElement | null = b; n && n !== document.body; n = n.parentElement) {
+        const cs = getComputedStyle(n);
+        if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) {
+          hidden.push(
+            `${n.id || String(n.className)}(${cs.display}/${cs.visibility}/${cs.opacity})`,
+          );
+        }
+      }
+      return {
+        cls: b.dataset.class ?? '',
+        inside: hit !== null && (hit === b || b.contains(hit)),
+        hidden,
+      };
+    });
+  });
+  expect(rows, 'four tray buttons present').toHaveLength(4);
+  for (const row of rows) {
+    expect(row.inside, `${row.cls}: elementFromPoint at the button centre misses it`).toBe(true);
+    expect(row.hidden, `${row.cls}: hidden ancestor ${row.hidden.join(', ')}`).toEqual([]);
+  }
+}
+
 const MATCH_CONTROLS: [string, string][] = [
   ['tray', '#tw-class-pick'],
   ['switch', '#tw-btn-switch'],
@@ -120,6 +187,7 @@ test('844×390: tray and switch sizes, clearances and Thai names', async ({ page
     ['throw', '#tw-btn-throw'],
   ]);
   assertLayout(boxes, 844, 390, false);
+  await assertTrayHittable(page);
   // The four Thai class names with their digit hints are visible.
   const names = ['นักมวย', 'หมอยา', 'นินจา', 'ยักษ์'];
   for (const [i, name] of names.entries()) {
@@ -157,6 +225,69 @@ test('667×320: narrow tray (280px), 60×72 buttons and ≥8 px clearance to Pic
   const gapX = Math.max(trayBox!.x - pickBtn!.right, pickBtn!.x - trayBox!.right);
   const gapY = Math.max(trayBox!.y - pickBtn!.bottom, pickBtn!.y - trayBox!.bottom);
   expect(Math.max(gapX, gapY), 'tray↔Pick clearance ≥8px').toBeGreaterThanOrEqual(8);
+  await assertTrayHittable(page);
+});
+
+test('the tray never covers the pad preview label or its crates (normal + super, 844 and 667)', async ({
+  page,
+}, info) => {
+  test.skip(info.project.name !== 'mobile-landscape', 'touch pad must stay visible');
+  await stageTray(page);
+  for (const [w, h] of [
+    [844, 390],
+    [667, 320],
+  ] as const) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.waitForTimeout(300); // Phaser refit + HUD reflow
+    for (const layout of ['normal', 'super'] as const) {
+      await page.evaluate((superLayout) => {
+        window.__talad.setPadLayout(
+          'fruit',
+          superLayout
+            ? [
+                { col: 0, layer: 0, kind: 'super' as const },
+                { col: 0, layer: 1 },
+                { col: 1, layer: 0 },
+                { col: 1, layer: 1 },
+              ]
+            : [
+                { col: 0, layer: 0 },
+                { col: 0, layer: 1 },
+                { col: 1, layer: 0 },
+                { col: 1, layer: 1 },
+              ],
+        );
+      }, layout === 'super');
+      await page.waitForTimeout(250);
+      await expect(tray(page)).toBeVisible();
+      const trayBox = (await tray(page).boundingBox())!;
+      const label = await page.locator('.tw-preview').boundingBox();
+      expect(label, 'pad preview label rendered').toBeTruthy();
+      expect(
+        boxesOverlap(trayBox, label!),
+        `${w}×${h} ${layout}: tray covers the pad preview label`,
+      ).toBe(false);
+      const crates = await padCratePoints(page);
+      expect(crates, 'four pad crates staged').toHaveLength(4);
+      for (const crate of crates) {
+        const covered =
+          crate.x >= trayBox.x &&
+          crate.x <= trayBox.x + trayBox.width &&
+          crate.y >= trayBox.y &&
+          crate.y <= trayBox.y + trayBox.height;
+        expect(
+          covered,
+          `${w}×${h} ${layout}: tray covers the ${crate.kind} crate at ${Math.round(crate.x)},${Math.round(crate.y)}`,
+        ).toBe(false);
+      }
+      if (layout === 'super') {
+        expect(
+          crates.some((c) => c.kind === 'super'),
+          'star crate staged',
+        ).toBe(true);
+      }
+    }
+  }
 });
 
 test('1280×800 desktop: switch visible (not hidden by the touch rule) and no overlaps', async ({
@@ -166,6 +297,7 @@ test('1280×800 desktop: switch visible (not hidden by the touch rule) and no ov
   await stageTray(page);
   const boxes = await measure(page, MATCH_CONTROLS);
   assertLayout(boxes, 1280, 800, false);
+  await assertTrayHittable(page);
   await expect(page.locator('#tw-btn-switch')).toBeVisible();
   // Desktop has no touch action buttons at all.
   await expect(page.locator('#tw-btn-fire')).toHaveCount(0);

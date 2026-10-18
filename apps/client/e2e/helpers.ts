@@ -25,7 +25,13 @@ export interface HookState {
   seed: number;
   tick: number;
   units: HookUnit[];
-  crates: { id: number; pos: { x: number; y: number }; state: string; landTick: number }[];
+  crates: {
+    id: number;
+    pos: { x: number; y: number };
+    state: string;
+    landTick: number;
+    kind: string;
+  }[];
   pads: Record<
     string,
     {

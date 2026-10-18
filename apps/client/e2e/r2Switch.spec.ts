@@ -29,10 +29,17 @@ async function stageUntil(
 }
 
 /** Stage a dessert enemy right next to a unit so a fire press can slap it. */
+const dist2 = (p: { x: number; y: number }, q: { x: number; y: number }): number =>
+  (p.x - q.x) ** 2 + (p.y - q.y) ** 2;
+
 async function stageAdjacentEnemy(page: Page, near: HookUnit): Promise<HookUnit> {
   const st = await getState(page);
-  const enemy = st.units.find((u) => u.team === 'dessert' && u.deadUntilTick === null);
-  expect(enemy).toBeDefined();
+  // Nearest living dessert unit: the one with the least walking to do, so it
+  // is still inside SLAP_RANGE when the strike lands.
+  const enemy = st.units
+    .filter((u) => u.team === 'dessert' && u.deadUntilTick === null)
+    .sort((a, b) => dist2(a.pos, near.pos) - dist2(b.pos, near.pos))[0];
+  expect(enemy, 'a living dessert unit to stage').toBeDefined();
   await page.evaluate(({ id, x, y }) => window.__talad.placeUnit(id, x, y), {
     id: enemy!.id,
     x: near.pos.x + 0.6,
@@ -389,21 +396,56 @@ test('journey: recruit a super class, switch to it, use its ability, die, respaw
   controlled = controlledHookUnit(await getState(page)) ?? undefined;
   expect(controlled?.classId).toBe('boxer');
   const boxerId = controlled!.id;
-  // Ability: the boxer's slap. An adjacent enemy + a real fire press.
+  // Hold fire, then re-dock the enemy repeatedly DURING the hold: a staged
+  // dessert bot sprints back to its post at ~9 u/s (measured), so it leaves
+  // SLAP_RANGE (1.2) within ~70 ms of any placement. With fire held, each
+  // re-dock is followed by a slap tick within ≤50 ms and the slap (instant,
+  // nearest enemy in range) lands. Touch: the Fire button is the real
+  // per-device path (no cursor; sim autoAim targets the nearest living
+  // enemy). Desktop: aim the mouse AT the enemy through the canvas box. The
+  // previous form aimed at the boxer with a dropped canvas offset — on touch
+  // its mouse.down landed on the joystick zone and never fired at all — and
+  // its unitFeedback(0) + stale-snapshot hp comparison could not fail.
   const enemy = await stageAdjacentEnemy(page, controlled!);
-  const canvas = page.locator('canvas');
-  const cbox = await canvas.boundingBox();
-  const k = cbox!.width / 1280;
-  await page.mouse.move((40 + controlled!.pos.x * 30) * k, controlled!.pos.y * 30 * k);
-  const enemyHp0 = enemy.hp;
-  await page.mouse.down();
+  const enemyHp0 = (await getState(page)).units.find((u) => u.id === enemy.id)!.hp;
+  const attackAt0 = await page.evaluate((id) => window.__talad.unitFeedback(id).attackAt, boxerId);
+  const fireBtn = page.locator('#tw-btn-fire');
+  const touchFire = (await fireBtn.count()) > 0;
+  if (touchFire) {
+    // `fire` is a level sampled at 20 Hz (no latch), so a short tap can fall
+    // between reads and never fire (measured). Hold a real pointer press on
+    // the button across several ticks — the button's pointerdown/up handlers
+    // are the same ones a finger uses.
+    const fbox = (await fireBtn.boundingBox())!;
+    await page.mouse.move(fbox.x + fbox.width / 2, fbox.y + fbox.height / 2);
+    await page.mouse.down();
+  } else {
+    const cbox = await page.locator('canvas').boundingBox();
+    const k = cbox!.width / 1280;
+    await page.mouse.move(
+      cbox!.x + (40 + (controlled!.pos.x + 0.6) * 30) * k,
+      cbox!.y + controlled!.pos.y * 30 * k,
+    );
+    await page.mouse.down();
+  }
+  for (let i = 0; i < 5; i++) {
+    await page.evaluate(({ id, x, y }) => window.__talad.placeUnit(id, x, y), {
+      id: enemy.id,
+      x: controlled!.pos.x + 0.6,
+      y: controlled!.pos.y,
+    });
+    await page.waitForTimeout(150);
+  }
+  await page.mouse.up();
+  // The switched body attacked, and a FRESH state read shows the enemy lost hp.
   await expect
-    .poll(async () => page.evaluate(() => window.__talad.unitFeedback(0).attackAt), {
+    .poll(async () => page.evaluate((id) => window.__talad.unitFeedback(id).attackAt, boxerId), {
       timeout: 3_000,
     })
-    .toBeGreaterThanOrEqual(0);
-  await page.mouse.up();
-  expect(enemy.hp).toBeLessThanOrEqual(enemyHp0);
+    .toBeGreaterThan(attackAt0);
+  await page.waitForTimeout(200); // let any in-flight swing resolve
+  const enemyHp = (await getState(page)).units.find((u) => u.id === enemy.id)?.hp ?? 0;
+  expect(enemyHp, 'enemy hp dropped below the pre-slap value').toBeLessThan(enemyHp0);
   // Death: park the CONTROLLED boxer on a dessert guard post. The post's bot
   // holds position (guard), so SLAP_RANGE adjacency is sustained and it slaps
   // the idle boxer down; the boxer never fights back and no team pushes a
