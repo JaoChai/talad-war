@@ -331,9 +331,7 @@ describe('pad preview', () => {
     // The painted tile of col0 (back) sits BELOW the world-rect cell centre
     // (591 vs 573 stage px) — the x1.3 art grew the painted floor downwards
     // from the world rect, so the old position glowed the pad's back skirt.
-    expect(glowStagePos(s)!.y).toBeGreaterThan(
-      Math.round((s.pads.fruit.origin.y + 1.1) * 30),
-    );
+    expect(glowStagePos(s)!.y).toBeGreaterThan(Math.round((s.pads.fruit.origin.y + 1.1) * 30));
     s.units[0]!.deadUntilTick = s.tick + 1;
     expect(glowStagePos(s)).toBeNull();
   });

@@ -96,7 +96,10 @@ describe('R2c pad art scale (owner: "ปรับที่แท่นวาง�
     expect(PAD_ART_SCALE).toBeGreaterThanOrEqual(1.2);
     expect(PAD_ART_SCALE).toBeLessThanOrEqual(1.35);
     // R2c values: 2 * 2.2 * 30 * 1.3 = 171.6 px wide, up from 132.
-    expect(padArtStageWidth()).toBeCloseTo(PAD_FLOOR * PAD_CELL_SIZE * STAGE_SCALE * PAD_ART_SCALE, 6);
+    expect(padArtStageWidth()).toBeCloseTo(
+      PAD_FLOOR * PAD_CELL_SIZE * STAGE_SCALE * PAD_ART_SCALE,
+      6,
+    );
     expect(padArtStageWidth()).toBeCloseTo(171.6, 3);
   });
 

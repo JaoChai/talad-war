@@ -15,20 +15,6 @@ const SIZES = [
   { width: 667, height: 320 },
 ];
 
-const FRUIT_LOADED = [
-  { col: 0, layer: 0 },
-  { col: 0, layer: 1 },
-  { col: 1, layer: 0 },
-  { col: 2, layer: 0 },
-  { col: 3, layer: 0 },
-] as const;
-
-const DESSERT_LOADED = [
-  { col: 0, layer: 0 },
-  { col: 1, layer: 0 },
-  { col: 3, layer: 0 },
-] as const;
-
 interface Rect {
   name: string;
   x: number;
@@ -103,9 +89,9 @@ async function onPadCrateRects(page: Page): Promise<{ rects: Rect[]; onPadCount:
     for (const pad of [st.pads.fruit, st.pads.dessert]) {
       for (const col of pad!.cells) for (const id of col) if (id != null) onPad.add(id);
     }
-    const sprites = window.__talad.artFeedback().sprites.filter(
-      (s) => s.visible && onPad.has(Number(s.name.replace('crate-', ''))),
-    );
+    const sprites = window.__talad
+      .artFeedback()
+      .sprites.filter((s) => s.visible && onPad.has(Number(s.name.replace('crate-', ''))));
     return {
       onPadCount: onPad.size,
       rects: sprites.map((s) => ({
@@ -121,16 +107,12 @@ async function onPadCrateRects(page: Page): Promise<{ rects: Rect[]; onPadCount:
 
 test.describe('R2c: HUD never covers on-pad crates', () => {
   for (const { width, height } of SIZES) {
-    test(`${width}x${height}: loaded pads clear every HUD element`, async ({
-      page,
-    }, info) => {
+    test(`${width}x${height}: loaded pads clear every HUD element`, async ({ page }, info) => {
       // Each size runs once across the two projects (mirrors r2Layout).
       test.skip((width === 1280) !== (info.project.name === 'desktop'));
       await page.setViewportSize({ width, height });
       await stageLoadedPads(page);
-      await expect
-        .poll(async () => page.locator('.tw-timer').textContent())
-        .not.toBe('0:00');
+      await expect.poll(async () => page.locator('.tw-timer').textContent()).not.toBe('0:00');
       const { rects: crates, onPadCount } = await onPadCrateRects(page);
       expect(onPadCount).toBe(8); // 5 fruit + 3 dessert crates staged
       expect(crates).toHaveLength(8);
