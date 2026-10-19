@@ -254,8 +254,11 @@ test('the channel is noninteractive and cancels when the body walks off the pad'
   await stepRealInputs(page, 1);
   await expect(trayStatus(page)).toBeVisible();
   // Real movement input: steer right until off the pad cell — the channel cancels.
+  // R2b pads are 4.4 u wide: col-0 centre (9.1) exits x>12.85 after ~12 ticks at
+  // 0.33 u/tick (boxer), so 10 ticks no longer leave the pad — walk 16, still
+  // inside the 20-tick channel so the cancel beats completion.
   await page.keyboard.down('KeyD');
-  const moved = await stepRealInputs(page, 10);
+  const moved = await stepRealInputs(page, 16);
   expect(moved.pads.fruit!.opening).toBeNull();
   await page.keyboard.up('KeyD');
   await expect(trayStatus(page)).toBeHidden();

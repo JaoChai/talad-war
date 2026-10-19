@@ -89,7 +89,8 @@ export const BOT_CLASS_NINJA_NEED_BONUS = 2;
 export const BOT_CLASS_GIANT_NEED_BONUS = 2;
 export const BOT_CLASS_BOXER_NEED_BONUS = 1;
 
-export const PAD_CELL_SIZE = 1.5;
+/** R2b owner feedback: the v1 1.5 cell made pads look smaller than the crates. */
+export const PAD_CELL_SIZE = 2.2;
 export const PAD_FLOOR = 2; // 2x2 floor cells -> 4 pad columns
 export const PAD_LAYERS = 2; // cells[col][layer 0..1]
 
@@ -105,9 +106,9 @@ export const STALL_RECTS: Record<Team, Rect> = {
 
 export const PAD_ORIGINS: Record<Team, Vec2> = {
   fruit: { x: 8, y: 18 },
-  // Exact 180° rotation of the fruit pad rect (8,18)-(11,21) about (20,12); plan Step 3's
-  // "(30,3.5)" was not rotation-symmetric — the card's symmetry acceptance wins (see ledger).
-  dessert: { x: 29, y: 3 },
+  // Exact 180° rotation of the fruit pad rect (8,18)-(12.4,22.4) about (20,12); the R2b
+  // enlargement recomputed this origin so the symmetry pin (padGeometry.test.ts) holds.
+  dessert: { x: 27.6, y: 1.6 },
 };
 
 export const CENTER_DROP_ZONE: { x: number; y: number; r: number } = { x: 20, y: 12, r: 5 };

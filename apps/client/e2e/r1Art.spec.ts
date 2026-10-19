@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { MatchState } from '@talad/sim';
 import type { TaladTestHooks } from '../src/testHooks';
+import { padPaintedCellStagePos } from '../src/render/world';
 import { waitHooks } from './helpers';
 
 type Frames = { prev: MatchState; cur: MatchState };
@@ -187,8 +188,8 @@ test.describe('R1 art', () => {
       [900, 'crate_super_air', 66],
       [901, 'crate_super', 66],
       [902, 'crate_super', 54],
-      [903, 'crate', 34],
-      [904, 'crate_super', 34],
+      [903, 'crate', 59],
+      [904, 'crate_super', 59],
     ] as const) {
       const s = samples.falling.find((s) => s.name === `crate-${id}`)!;
       expect(s.texture).toBe(texture);
@@ -235,11 +236,40 @@ test.describe('R1 art', () => {
       const top = ss.find((s) => s.name === 'crate-901')!;
       expect(base.texture).toBe(wantLower);
       expect(top.texture).toBe(wantUpper);
-      expect(base.y - top.y).toBe(22);
-      expect(base.width).toBe(34);
-      expect(top.width).toBe(34);
+      expect(base.y - top.y).toBe(38);
+      // Phaser reports width as scale*texture and picks up 1-ulp float error.
+      expect(base.width).toBeCloseTo(59, 4);
+      expect(top.width).toBeCloseTo(59, 4);
     });
   }
+
+  test('on-pad crates sit at the painted art cell centres (R2b round 2)', async ({ page }) => {
+    await page.evaluate(() => {
+      const cur = window.__r1Frames.cur;
+      cur.crates = [910, 911, 912, 913].map((id) => ({
+        id,
+        kind: 'normal',
+        state: 'onPad',
+        pos: { x: 0, y: 0 },
+        landTick: 0,
+      }));
+      cur.pads.fruit.cells = [[910], [911], [912], [913]];
+      window.__talad.renderSnapshot(cur, cur, 1);
+    });
+    const origin = await page.evaluate(
+      () => (window.__talad as unknown as TaladTestHooks).state().pads.fruit.origin,
+    );
+    const ss = await sprites(page);
+    // Lead finding 22:11: each crate must sit on the PAINTED tile of the pad
+    // art (iso diamond N/E/S/W), not the world-rect cell span that drew the
+    // back row above the art.
+    for (const col of [0, 1, 2, 3]) {
+      const s = ss.find((q) => q.name === `crate-${910 + col}`)!;
+      const want = padPaintedCellStagePos(origin, col);
+      expect(s.x, `col${col} x`).toBe(want.x);
+      expect(s.y, `col${col} y`).toBe(want.y);
+    }
+  });
 
   test('top-edge super carrier fits the entire real cargo art inside the 720 stage', async ({
     page,

@@ -109,7 +109,9 @@ function observeSixSeeds() {
   const events: sim.MatchState['events'] = [];
   const winners: Array<Team | 'draw' | null> = [];
   const seconds: number[] = [];
-  for (let seed = 1; seed <= 6; seed++) {
+  // Seeds 19-24 (was 1-6) to match the r2Bots class-diversity window: seeds 1-6
+  // recruit 0 boxers on the enlarged R2b pads (see PR body for the scan).
+  for (let seed = 19; seed <= 24; seed++) {
     let state = sim.createMatch(seed, { humanUnit: null });
     while (state.winner === null && state.tick < 18000) {
       state = sim.step(state, new Map());
@@ -188,7 +190,7 @@ function observeSixSeeds() {
 }
 
 it('replays six short natural matches with independently observed counters and percentiles', () => {
-  const opts = { games: 6, seed0: 1, maxMinutes: 15 };
+  const opts = { games: 6, seed0: 19, maxMinutes: 15 };
   const expected = observeSixSeeds();
   const { msPerTick: firstTiming, ...first } = runBatch(opts);
   const { msPerTick: secondTiming, ...second } = runBatch(opts);

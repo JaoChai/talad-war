@@ -20,7 +20,15 @@ import {
 } from './classGeometry';
 import { ClassDecorations } from './classDecorations';
 import { ControlledMarker } from './controlledMarker';
-import { STAGE_SCALE, clampDrawY, padCellOffset, padCenterOffset, worldToStage } from './world';
+import {
+  ON_PAD_CRATE_WIDTH,
+  ON_PAD_STACK_OFFSET,
+  STAGE_SCALE,
+  clampDrawY,
+  padCenterOffset,
+  padPaintedCellStagePos,
+  worldToStage,
+} from './world';
 
 /** Team colour tokens approved in the Task 7 HUD mockup. */
 const TEAM_COLOURS: Record<Team, number> = { fruit: 0x2f7bff, dessert: 0xff4a3d };
@@ -607,15 +615,17 @@ export class MatchView {
         const spot = padOf(crate);
         if (spot) {
           const pad = cur.pads[spot.team];
-          const off = padCellOffset(spot.col); // mirrors sim pad.ts cell math
-          at = worldToStage({ x: pad.origin.x + off.x, y: pad.origin.y + off.y });
+          // R2b round 2: rest the crate on the PAINTED cell of the pad art
+          // (measured tile centroids), not the world-rect cell span that drew
+          // the back row above the art. Sim pad cells are untouched.
+          at = padPaintedCellStagePos(pad.origin, spot.col);
           if (spot.layer === 1) {
             const lowerId = pad.cells[spot.col]![0];
             const lower = cur.crates.find((c) => c.id === lowerId);
             // A two-normal composite would cover a super crate in either order.
             if (crate.kind !== 'super' && lower && lower.kind !== 'super')
               view.sprite.setTexture('crate_stack2');
-            at.y -= 22;
+            at.y -= ON_PAD_STACK_OFFSET;
           }
           depth = Math.floor(at.y) - 2;
         }
@@ -626,7 +636,7 @@ export class MatchView {
       this.sizeProp(
         view.sprite,
         crate.state === 'onPad'
-          ? 34
+          ? ON_PAD_CRATE_WIDTH
           : crate.state === 'ground'
             ? GROUND_CRATE_WIDTH
             : 1.8 * STAGE_SCALE,

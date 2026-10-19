@@ -233,7 +233,7 @@ test('props preserve manifest ratios across stall states, pad, crates, shots, bo
   const ground = samples.find((s) => s.texture === 'crate')!;
   expect(ground.width).toBeCloseTo(66, 0);
   expect(samples.find((s) => s.texture === 'crate_air')!.width).toBeCloseTo(66, 0);
-  expect(samples.find((s) => s.name === 'crate-902')!.width).toBe(34);
+  expect(samples.find((s) => s.name === 'crate-902')!.width).toBe(59);
   await page.clock.runFor(160);
   for (const boom of await page.evaluate(() =>
     window.__talad.artFeedback().sprites.filter((s) => s.texture === 'explosion'),

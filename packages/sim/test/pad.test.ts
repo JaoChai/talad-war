@@ -30,16 +30,19 @@ function inp(over: Partial<UnitInput> = {}): UnitInput {
   };
 }
 
-/** Fruit pad (8,18)-(11,21), 2x2 floor cells of 1.5: col centers, col = cellX + 2*cellY. */
+/** Fruit pad (8,18)-(12.4,22.4), 2x2 floor cells of 2.2: col centers, col = cellX + 2*cellY. */
 const COL_CENTERS: Vec2[] = [
-  { x: 8.75, y: 18.75 }, // col 0
-  { x: 10.25, y: 18.75 }, // col 1
-  { x: 8.75, y: 20.25 }, // col 2
-  { x: 10.25, y: 20.25 }, // col 3
+  { x: 9.1, y: 19.1 }, // col 0
+  { x: 11.3, y: 19.1 }, // col 1
+  { x: 9.1, y: 21.3 }, // col 2
+  { x: 11.3, y: 21.3 }, // col 3
 ];
-const DESSERT_COL0: Vec2 = { x: 29.75, y: 3.75 };
-/** Ground point just west of the fruit pad, within PICK_RADIUS of col 0's center. */
-const CRATE_NEAR_COL0: Vec2 = { x: 8 - 0.05, y: 18.75 };
+const DESSERT_COL0: Vec2 = { x: 28.7, y: 2.7 };
+/** Ground point just west of the fruit pad, within PICK_RADIUS of a standable col-0 spot. */
+const CRATE_NEAR_COL0: Vec2 = { x: 8 - 0.05, y: 19.1 };
+/** Stand-in on col 0 close to the pad's west edge (the bigger 2.2 cell put its
+ * center 1.1 inside the rect, out of PICK_RADIUS reach of a west-side crate). */
+const COL0_WEST_STAND: Vec2 = { x: 8.4, y: 19.1 };
 
 function cell(s: MatchState, team: Team, col: number, layer: number): CrateId | null {
   return must(s.pads[team].cells[col])[layer] ?? null;
@@ -95,7 +98,7 @@ describe('pad columns', () => {
     expect(padCellAt(pad, must(COL_CENTERS[2]))).toBe(2);
     expect(padCellAt(pad, must(COL_CENTERS[3]))).toBe(3);
     expect(padCellAt(pad, { x: 8, y: 18 })).toBe(0); // inclusive origin corner
-    expect(padCellAt(pad, { x: 11, y: 21 })).toBe(3); // inclusive far corner
+    expect(padCellAt(pad, { x: 12.4, y: 22.4 })).toBe(3); // inclusive far corner
     expect(padCellAt(pad, { x: 7.9, y: 18.75 })).toBeNull(); // west of the pad
     expect(padCellAt(pad, DESSERT_COL0)).toBeNull(); // the other team's pad
   });
@@ -157,14 +160,14 @@ describe('pad columns', () => {
 
   it('an empty own pad column still allows the ground pick preserved from T2', () => {
     const s0 = createMatch(5);
-    unitAt(s0, 0, must(COL_CENTERS[0]));
+    unitAt(s0, 0, must(COL0_WEST_STAND));
     s0.crates.push({
       id: 101,
       pos: { ...CRATE_NEAR_COL0 },
       state: 'ground',
       landTick: 0,
     });
-    expect(Math.hypot(must(COL_CENTERS[0]).x - CRATE_NEAR_COL0.x, 0)).toBeLessThan(PICK_RADIUS);
+    expect(Math.hypot(COL0_WEST_STAND.x - CRATE_NEAR_COL0.x, 0)).toBeLessThan(PICK_RADIUS);
 
     const s = step(s0, new Map([[0, inp({ pickDrop: true })]]));
     expect(must(s.units[0]).carrying).toBe(101);
@@ -199,7 +202,7 @@ describe('pad columns', () => {
     const s0 = createMatch(5);
     unitAt(s0, 0, must(DESSERT_COL0));
     putOnPad(s0, 'dessert', 0, 0, 100);
-    s0.crates.push({ id: 101, pos: { x: 29 - 0.1, y: 3.75 }, state: 'ground', landTick: 0 });
+    s0.crates.push({ id: 101, pos: { x: 27.6 - 0.1, y: 2.7 }, state: 'ground', landTick: 0 });
 
     const s = step(s0, new Map([[0, inp({ pickDrop: true })]]));
     expect(must(s.units[0]).carrying).toBeNull();
