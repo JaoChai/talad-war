@@ -1,8 +1,8 @@
 import { PAD_CELL_SIZE, padCellAt, padPreview, controlledUnit } from '@talad/sim';
-import type { MatchState } from '@talad/sim';
+import type { MatchState, Vec2 } from '@talad/sim';
 import { th, recipeName, qualityName } from '../i18n/th';
 import { itemLabel } from './status';
-import { STAGE_H, STAGE_W, worldToStage } from '../render/world';
+import { STAGE_H, STAGE_W, padPaintedCellStagePos, worldToStage } from '../render/world';
 
 /**
  * The pad cell the controlled body stands on when alive on its own pad, else
@@ -15,6 +15,18 @@ export function glowCellFor(state: MatchState): number | null {
   const unit = controlledUnit(state);
   if (!unit || unit.team !== 'fruit' || unit.deadUntilTick !== null) return null;
   return padCellAt(state.pads.fruit, unit.pos);
+}
+
+/**
+ * R2c: the glow's stage position — the PAINTED tile centre of the glow cell,
+ * not the world-rect cell centre (the x1.3 art grew away from the world rect,
+ * so the old position glowed the skirt). Pure so the unit tests stay
+ * engine-free; PadGlow (Phaser) is the only consumer.
+ */
+export function glowStagePos(state: MatchState): Vec2 | null {
+  const col = glowCellFor(state);
+  if (col === null) return null;
+  return padPaintedCellStagePos(state.pads.fruit.origin, col);
 }
 
 /**

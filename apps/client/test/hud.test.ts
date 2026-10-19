@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createMatch } from '@talad/sim';
 import type { MatchState, SquadCommand } from '@talad/sim';
 import { applyToggle, SquadCommands } from '../src/hud/commands';
-import { glowCellFor, PreviewText } from '../src/hud/padPreview';
+import { glowCellFor, glowStagePos, PreviewText } from '../src/hud/padPreview';
+import { padPaintedCellStagePos } from '../src/render/world';
 import { StallBars } from '../src/hud/stallBars';
 import { MatchHud } from '../src/hud/status';
 import { formatElapsed, MatchTimer } from '../src/hud/timer';
@@ -320,6 +321,21 @@ describe('pad preview', () => {
     expect(glowCellFor(s)).toBe(0);
     s.units[0]!.deadUntilTick = s.tick + 1;
     expect(glowCellFor(s)).toBeNull();
+  });
+
+  it('glowStagePos: the glow marks the PAINTED tile, not the world-rect cell centre (R2c)', () => {
+    const s = state();
+    expect(glowStagePos(s)).toBeNull(); // no controlled unit on the pad yet
+    s.units[0]!.pos = { x: s.pads.fruit.origin.x + 0.7, y: s.pads.fruit.origin.y + 0.7 };
+    expect(glowStagePos(s)).toEqual(padPaintedCellStagePos(s.pads.fruit.origin, 0));
+    // The painted tile of col0 (back) sits BELOW the world-rect cell centre
+    // (591 vs 573 stage px) — the x1.3 art grew the painted floor downwards
+    // from the world rect, so the old position glowed the pad's back skirt.
+    expect(glowStagePos(s)!.y).toBeGreaterThan(
+      Math.round((s.pads.fruit.origin.y + 1.1) * 30),
+    );
+    s.units[0]!.deadUntilTick = s.tick + 1;
+    expect(glowStagePos(s)).toBeNull();
   });
 
   it('preview text shows the Thai recipe for 1 crate and hides for an empty pad', () => {
