@@ -12,6 +12,10 @@ import { enterMatch } from './helpers';
  * round 1 (comment #435/#444): 740x360 (dessert HP icon regression),
  * 700x360, 640x360, 690x390 (guard/loadout over dessert crates) and
  * 568x320 (guard/loadout + #tw-btn-switch over crates).
+ *
+ * Round 3 (review #449) adds a HUD-to-HUD contract: in the small-phone band
+ * the loadout pill must keep an 8px gap from the command controls
+ * (guard/attack/fetch/switch) so both labels stay readable.
  */
 
 const SIZES = [
@@ -22,7 +26,19 @@ const SIZES = [
   { width: 700, height: 360 },
   { width: 690, height: 390 },
   { width: 640, height: 360 },
+  { width: 600, height: 340 },
+  { width: 640, height: 320 },
   { width: 568, height: 320 },
+];
+
+/** Review #449: sizes where the loadout pill vs command row is pinned. */
+const HUD_GAP_SIZES = [
+  { width: 560, height: 320 },
+  { width: 568, height: 320 },
+  { width: 600, height: 340 },
+  { width: 640, height: 320 },
+  { width: 640, height: 360 },
+  { width: 667, height: 320 },
 ];
 
 interface Rect {
@@ -144,3 +160,37 @@ test.describe('R2c: HUD never covers on-pad crates', () => {
     });
   }
 });
+
+test.describe('R2c round 3: loadout pill keeps an 8px gap to the command controls', () => {
+  for (const { width, height } of HUD_GAP_SIZES) {
+    test(`${width}x${height}: loadout clears guard/attack/fetch/switch by 8px`, async ({
+      page,
+    }, info) => {
+      test.skip((width === 1280) !== (info.project.name === 'desktop'));
+      await page.setViewportSize({ width, height });
+      await stageLoadedPads(page);
+      await expect.poll(async () => page.locator('.tw-timer').textContent()).not.toBe('0:00');
+      const hud = await hudRects(page);
+      const loadout = hud.find((r) => r.name === 'loadout');
+      if (!loadout) throw new Error(`loadout missing at ${width}x${height}`);
+      for (const name of ['cmdGuard', 'cmdAttack', 'cmdFetch', 'switch'] as const) {
+        const btn = hud.find((r) => r.name === name);
+        if (!btn) throw new Error(`${name} missing at ${width}x${height}`);
+        const gapX = Math.max(btn.x - (loadout.x + loadout.width), loadout.x - (btn.x + btn.width));
+        const gapY = Math.max(
+          btn.y - (loadout.y + loadout.height),
+          loadout.y - (btn.y + btn.height),
+        );
+        expect(
+          gapX >= 8 || gapY >= 8,
+          `loadout [${fmt(loadout)}] vs ${name} [${fmt(btn)}] at ${width}x${height}: ` +
+            `gapX=${gapX.toFixed(1)} gapY=${gapY.toFixed(1)}`,
+        ).toBe(true);
+      }
+    });
+  }
+});
+
+function fmt(r: Rect): string {
+  return `[${r.x.toFixed(1)},${r.y.toFixed(1)} ${r.width.toFixed(1)}x${r.height.toFixed(1)}]`;
+}
