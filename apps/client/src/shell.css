@@ -1006,17 +1006,49 @@ body {
    a top row there, so the row must sit below the dessert crate bottoms.
    701-843px stays on the base right-hand column (see the band comment).
    Round 3 (review #449): the loadout pill shares that row and runs into the
-   guard button at 560-640px widths (up to 46.4px overlap at 560x320). Drop
-   the pill 131px below the row top: fetch ends at row top + 66 + 56, so the
-   pill keeps a 9px gap under fetch and >=74px under guard/attack, while
-   staying right of the docked 280px tray (x304 unchanged) and, per the
-   measured probe, >=73px clear of every on-pad crate at 560-700px. */
+   guard button at 560-640px widths (up to 46.4px overlap at 560x320). Round 4
+   (own e2e run on deb3ef4): dropping the tall wrapped pill 131px under the row
+   hit the touch row instead — pick (y = H-84) overlaps the pill bottom, and
+   the throw button (bottom = H-114) caps the slot from above, so the
+   H-114..H-84 window is exactly one 26px row tall at every band height. The
+   pill now sits in that slot: bottom-anchored 86px (2px clear of pick and
+   throw), one non-wrapping label row (the bomb count stays on the throw
+   button, which already shows "โยน N"), capped left of Fire (x454 at 560px).
+   Guard/attack/fetch/switch keep >=8px (fetch and switch clear the pill on x;
+   guard ends 63px above it). 844x390/1280x800 are unchanged. */
 @media (orientation: landscape) and (min-width: 560px) and (max-width: 700px) and (max-height: 400px) {
   .tw-commands {
     top: max(64px, calc(21.3vh + 3px), calc(50vh - 16.2vw + 3px));
   }
 
   .tw-loadout {
-    top: max(195px, calc(21.3vh + 134px), calc(50vh - 16.2vw + 134px));
+    top: auto;
+    bottom: 86px;
+    left: 304px;
+    transform: none;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    width: max-content;
+    max-width: calc(28vw - 13px);
+    font-size: 11px;
+    line-height: 18px;
+    padding: 4px 8px;
+  }
+
+  .tw-loadout .tw-item-bombs {
+    display: none;
+  }
+
+  /* The 24px coconut/heavy icon sets the row height; at 16px the pill stays
+     26px tall so it fits the H-114..H-84 slot with 2px above and below. */
+  .tw-loadout .tw-item-label img {
+    width: 16px;
+    height: 16px;
+  }
+
+  .tw-loadout .tw-item-label {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 }
