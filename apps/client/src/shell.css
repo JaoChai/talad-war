@@ -955,28 +955,11 @@ body {
   }
 }
 
-/* R2c round 2 (review #444): review round 1's <=350px band misses two whole
-   families of small-phone landscape — 351-400px tall (740x360, 700x360,
-   690x390, 640x360) and <600px wide (568x320). One unified band covers every
-   560-843px-wide landscape up to 400px tall (844x390 and 1280x800 stay on
-   the untouched base layout):
-   - Top bar to y4 and a 36x24 HP icon: the dessert bar container bottom
-     (y28) clears the highest dessert crate (crate-6 top 32.1px at 560x304,
-     33.3px at 560 width-fit, 38px at 640x360).
-   - Command row below the dessert crate bottoms (front tile crate-8 bottom
-     = 0.2125H height-fit, H/2-0.1617W width-fit — guard's x window reaches
-     the front tile at every width-fit size) with a 3px margin; fetch still
-     ends >=8px above Fire (row top stays 64px at H<=315). Only <=700px:
-     there the dock band turns the commands into a top row. 701-843px keeps
-     the base right-hand COLUMN at top 56, exactly like 844x390 — guard and
-     fetch clear the dessert crates by x there, and sliding the column down
-     drops fetch onto Fire (the hudPolish 788x351 fixture pins that 1px gap).
-   - Loadout below the dessert crate bottoms (crate-8 bottom = 0.2125H,
-     H/2-0.1617W width-fit) with a 5px margin, left dock at x304 unchanged.
-   - Switch nudged to x4: its right edge (116px) clears the fruit pad's left
-     crate (x123.2 at 560 width-fit, 124.9 at 568x320) without shrinking the
-     pinned 112x56 touch target.
-   The tray docks (r2.css) and shrinks to 280px across the same band. */
+/* Small-phone HUD band: the expanded pad needs shorter HP bars and a lower
+   command row. The tray keeps its approved left dock; inventory has a single
+   bottom status dock outside the pad/preview/command regions. The later
+   height-specific rules reserve 8px between commands and touch actions.
+   All changes stay in 560-843px landscape, <=400px tall; 844/1280 are intact. */
 @media (orientation: landscape) and (min-width: 560px) and (max-width: 843px) and (max-height: 400px) {
   .tw-topbar {
     top: 4px;
@@ -991,56 +974,32 @@ body {
     width: 100px;
   }
 
-  .tw-loadout {
-    left: 304px;
-    top: max(78px, calc(21.3vh + 5px), calc(50vh - 16.2vw + 5px));
-    transform: none;
-  }
-
-  #tw-btn-switch {
-    left: 4px;
-  }
-}
-
-/* Command row, <=700px landscape only: the dock band turns the commands into
-   a top row there, so the row must sit below the dessert crate bottoms.
-   701-843px stays on the base right-hand column (see the band comment).
-   Round 3 (review #449): the loadout pill shares that row and runs into the
-   guard button at 560-640px widths (up to 46.4px overlap at 560x320). Round 4
-   (own e2e run on deb3ef4): dropping the tall wrapped pill 131px under the row
-   hit the touch row instead — pick (y = H-84) overlaps the pill bottom, and
-   the throw button (bottom = H-114) caps the slot from above, so the
-   H-114..H-84 window is exactly one 26px row tall at every band height. The
-   pill now sits in that slot: bottom-anchored 86px (2px clear of pick and
-   throw), one non-wrapping label row (the bomb count stays on the throw
-   button, which already shows "โยน N"), capped left of Fire (x454 at 560px).
-   Guard/attack/fetch/switch keep >=8px (fetch and switch clear the pill on x;
-   guard ends 63px above it). 844x390/1280x800 are unchanged. */
-@media (orientation: landscape) and (min-width: 560px) and (max-width: 700px) and (max-height: 400px) {
-  .tw-commands {
-    top: max(64px, calc(21.3vh + 3px), calc(50vh - 16.2vw + 3px));
-  }
-
+  /* One reserved status dock, left of Pick and right of the fruit crates.
+     At 560x320 its maximum box is [190,252 144x48]: >=8px to every
+     crafting preview, crate and control. Wider screens grow the text budget
+     toward 240px without moving the dock's right edge toward Pick. Keep
+     both independent inventory rows, including super-bomb quality. */
   .tw-loadout {
     top: auto;
-    bottom: 86px;
-    left: 304px;
+    bottom: 20px;
+    left: auto;
+    right: 226px;
     transform: none;
-    flex-direction: row;
+    flex-direction: column;
     flex-wrap: nowrap;
+    gap: 4px;
     width: max-content;
-    max-width: calc(28vw - 13px);
+    max-width: min(240px, calc(50vw - 136px));
     font-size: 11px;
     line-height: 18px;
     padding: 4px 8px;
   }
 
   .tw-loadout .tw-item-bombs {
-    display: none;
+    border-left: 0;
+    padding-left: 0;
   }
 
-  /* The 24px coconut/heavy icon sets the row height; at 16px the pill stays
-     26px tall so it fits the H-114..H-84 slot with 2px above and below. */
   .tw-loadout .tw-item-label img {
     width: 16px;
     height: 16px;
@@ -1050,5 +1009,31 @@ body {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+  }
+
+  #tw-btn-switch {
+    left: 4px;
+  }
+}
+
+/* Narrow phones use the command row below the dessert crates. */
+@media (orientation: landscape) and (min-width: 560px) and (max-width: 700px) and (max-height: 400px) {
+  .tw-commands {
+    top: max(64px, calc(21.3vh + 3px), calc(50vh - 16.2vw + 3px));
+  }
+}
+
+/* The wider short-phone row must also clear Throw by 8px at 800x304. */
+@media (orientation: landscape) and (min-width: 701px) and (max-width: 843px) and (max-height: 350px) {
+  .tw-commands {
+    top: min(62px, calc(100vh - 242px));
+  }
+}
+
+/* In the column layout, Fetch ends 188px below the column origin; Fire
+   starts at H-106. Reserve the same 8px sibling gap at browser-bar heights. */
+@media (orientation: landscape) and (min-width: 701px) and (max-width: 843px) and (min-height: 351px) and (max-height: 400px) {
+  .tw-commands {
+    top: min(56px, calc(100vh - 302px));
   }
 }
