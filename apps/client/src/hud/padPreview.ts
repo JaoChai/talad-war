@@ -74,7 +74,11 @@ export class PreviewText {
   private position(state: MatchState): void {
     if (!this.canvas) return;
     const origin = state.pads.fruit.origin;
-    const at = worldToStage({ x: origin.x + 2 * PAD_CELL_SIZE, y: origin.y - 0.3 });
+    // R2c: the x1.3 art raised the 2-stack sprite, so the label needs a higher
+    // anchor on desktop-scale canvases; on phone-landscape canvases the tray
+    // (DOM-fixed px) binds instead and 0.4 is the verified compromise.
+    const lift = this.canvas.getBoundingClientRect().height >= 480 ? 0.8 : 0.4;
+    const at = worldToStage({ x: origin.x + 2 * PAD_CELL_SIZE, y: origin.y - lift });
     const rect = this.canvas.getBoundingClientRect();
     const half = this.el.getBoundingClientRect().width / 2;
     const x = rect.left + (at.x * rect.width) / STAGE_W;

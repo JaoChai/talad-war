@@ -932,3 +932,25 @@ body {
     top: 66px;
   }
 }
+
+/* R2c small phones (667x320 band): the x1.3 pad art pushes the loaded dessert
+   pad under the stock dock/HP bar/command row. Drop the dock below the pad's
+   lowest crate (~68px at 667x320; fetch starts at y130, so a 30px dock keeps
+   >=8px gap), shorten the HP tracks so the dessert bar's left edge (~505px)
+   clears the pad's right crate edge (~492px), and lower the command row 8px so
+   guard (y64) clears the right-tile crate (bottom ~61.4px; fetch then ends at
+   y186, still >=8px above Fire at y198 in the 800x304/812x330 bands).
+   844x390 and 1280x800 are untouched. */
+@media (max-height: 350px) and (min-width: 600px) {
+  .tw-loadout {
+    top: 77px;
+  }
+
+  .tw-hp-track {
+    width: 100px;
+  }
+
+  .tw-commands {
+    top: 64px;
+  }
+}

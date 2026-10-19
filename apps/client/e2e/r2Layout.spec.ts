@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { controlledHookUnit, enterMatch, getState } from './helpers';
+import { padPaintedCellStagePos } from '../src/render/world';
 
 /**
  * R2-11 layout contract (plan §5): tray + switch positions, sizes and pairwise
@@ -109,25 +110,33 @@ function assertLayout(boxes: Box[], vw: number, vh: number, narrow: boolean): vo
 async function padCratePoints(
   page: Page,
 ): Promise<{ id: number; kind: string; x: number; y: number }[]> {
-  return page.evaluate(() => {
+  // R2c fixture migration (reason): crates render on the PAINTED tiles of the
+  // pad art (padPaintedCellStagePos), not at the world-rect cell centres —
+  // the art grew to PAD_ART_SCALE 1.3 and the world-rect points no longer
+  // describe where crate pixels are.
+  const st = await getState(page);
+  const origin = st.pads.fruit!.origin;
+  const cols = st.pads.fruit!.cells.map((col) =>
+    col.map((id) => (id == null ? null : st.crates.find((c) => c.id === id))),
+  );
+  const canvas = await page.evaluate(() => {
     const c = document.querySelector('canvas')!.getBoundingClientRect();
-    const st = window.__talad.state();
-    const out: { id: number; kind: string; x: number; y: number }[] = [];
-    for (const col of st.pads.fruit!.cells) {
-      for (const id of col) {
-        if (id == null) continue;
-        const cr = st.crates.find((x) => x.id === id);
-        if (!cr) continue;
-        out.push({
-          id,
-          kind: cr.kind,
-          x: c.x + ((40 + cr.pos.x * 30) * c.width) / 1280,
-          y: c.y + (cr.pos.y * 30 * c.height) / 720,
-        });
-      }
-    }
-    return out;
+    return { x: c.x, y: c.y, w: c.width, h: c.height };
   });
+  const out: { id: number; kind: string; x: number; y: number }[] = [];
+  cols.forEach((col, colIndex) => {
+    const at = padPaintedCellStagePos(origin, colIndex);
+    for (const cr of col) {
+      if (!cr) continue;
+      out.push({
+        id: cr.id,
+        kind: cr.kind,
+        x: canvas.x + (at.x * canvas.w) / 1280,
+        y: canvas.y + (at.y * canvas.h) / 720,
+      });
+    }
+  });
+  return out;
 }
 
 const boxesOverlap = (
