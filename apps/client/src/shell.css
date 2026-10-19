@@ -975,10 +975,11 @@ body {
   }
 
   /* One reserved status dock, left of Pick and right of the fruit crates.
-     At 560x320 its maximum box is [190,252 144x48]: >=8px to every
+     At 560x320 its maximum box is [190,244 144x56]: >=8px to every
      crafting preview, crate and control. Wider screens grow the text budget
      toward 240px without moving the dock's right edge toward Pick. Keep
-     both independent inventory rows, including super-bomb quality. */
+     both independent inventory rows, including super-bomb quality, at a
+     readable 15px (no more than 2px below the command labels). */
   .tw-loadout {
     top: auto;
     bottom: 20px;
@@ -990,8 +991,8 @@ body {
     gap: 4px;
     width: max-content;
     max-width: min(240px, calc(50vw - 136px));
-    font-size: 11px;
-    line-height: 18px;
+    font-size: 15px;
+    line-height: 22px;
     padding: 4px 8px;
   }
 

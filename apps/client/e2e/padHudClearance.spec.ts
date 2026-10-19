@@ -331,6 +331,26 @@ for (const [width, height] of BAND_SIZES) {
           u.bombsSuper = true;
           window.__talad.renderSnapshot(s, s, 1);
         }, held);
+        // Readability is part of the dock contract, not just non-intersection:
+        // shrinking inventory text must not be used to make this matrix fit.
+        const fonts = await page.evaluate(() => {
+          const size = (selector: string) => {
+            const el = document.querySelector(selector);
+            if (!el) throw new Error(`missing font target: ${selector}`);
+            return Number.parseFloat(getComputedStyle(el).fontSize);
+          };
+          return {
+            guard: size('#tw-cmd-guard'),
+            loadout: size('.tw-loadout'),
+            primary: size('.tw-item-primary'),
+            bombs: size('.tw-item-bombs'),
+          };
+        });
+        for (const label of ['loadout', 'primary', 'bombs'] as const) {
+          expect(fonts[label], `${staging}/${held}: ${label} readable font`).toBeGreaterThanOrEqual(
+            Math.max(15, fonts.guard - 2),
+          );
+        }
         const hud = await hudRects(page);
         const names = [
           'fruitHp',
@@ -355,7 +375,7 @@ for (const [width, height] of BAND_SIZES) {
         const { rects: crates, onPadCount } = await onPadCrateRects(page);
         expect(crates).toHaveLength(onPadCount);
         expect(onPadCount).toBe(staging === 'away' ? 8 : staging === 'crafting' ? 7 : 4);
-        evidence.push({ staging, held, hud, crates });
+        evidence.push({ staging, held, hud, crates, fonts });
         for (const a of hud) {
           expect(a.x).toBeGreaterThanOrEqual(0);
           expect(a.y).toBeGreaterThanOrEqual(0);
