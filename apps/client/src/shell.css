@@ -954,3 +954,59 @@ body {
     top: 64px;
   }
 }
+
+/* R2c round 2 (review #444): review round 1's <=350px band misses two whole
+   families of small-phone landscape — 351-400px tall (740x360, 700x360,
+   690x390, 640x360) and <600px wide (568x320). One unified band covers every
+   560-843px-wide landscape up to 400px tall (844x390 and 1280x800 stay on
+   the untouched base layout):
+   - Top bar to y4 and a 36x24 HP icon: the dessert bar container bottom
+     (y28) clears the highest dessert crate (crate-6 top 32.1px at 560x304,
+     33.3px at 560 width-fit, 38px at 640x360).
+   - Command row below the dessert crate bottoms (front tile crate-8 bottom
+     = 0.2125H height-fit, H/2-0.1617W width-fit — guard's x window reaches
+     the front tile at every width-fit size) with a 3px margin; fetch still
+     ends >=8px above Fire (row top stays 64px at H<=315). Only <=700px:
+     there the dock band turns the commands into a top row. 701-843px keeps
+     the base right-hand COLUMN at top 56, exactly like 844x390 — guard and
+     fetch clear the dessert crates by x there, and sliding the column down
+     drops fetch onto Fire (the hudPolish 788x351 fixture pins that 1px gap).
+   - Loadout below the dessert crate bottoms (crate-8 bottom = 0.2125H,
+     H/2-0.1617W width-fit) with a 5px margin, left dock at x304 unchanged.
+   - Switch nudged to x4: its right edge (116px) clears the fruit pad's left
+     crate (x123.2 at 560 width-fit, 124.9 at 568x320) without shrinking the
+     pinned 112x56 touch target.
+   The tray docks (r2.css) and shrinks to 280px across the same band. */
+@media (orientation: landscape) and (min-width: 560px) and (max-width: 843px) and (max-height: 400px) {
+  .tw-topbar {
+    top: 4px;
+  }
+
+  .tw-hp img {
+    width: 36px;
+    height: 24px;
+  }
+
+  .tw-hp-track {
+    width: 100px;
+  }
+
+  .tw-loadout {
+    left: 304px;
+    top: max(78px, calc(21.3vh + 5px), calc(50vh - 16.2vw + 5px));
+    transform: none;
+  }
+
+  #tw-btn-switch {
+    left: 4px;
+  }
+}
+
+/* Command row, <=700px landscape only: the dock band turns the commands into
+   a top row there, so the row must sit below the dessert crate bottoms.
+   701-843px stays on the base right-hand column (see the band comment). */
+@media (orientation: landscape) and (min-width: 560px) and (max-width: 700px) and (max-height: 400px) {
+  .tw-commands {
+    top: max(64px, calc(21.3vh + 3px), calc(50vh - 16.2vw + 3px));
+  }
+}

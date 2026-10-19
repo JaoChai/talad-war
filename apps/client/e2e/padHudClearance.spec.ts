@@ -4,15 +4,25 @@ import { enterMatch } from './helpers';
 /**
  * R2c acceptance: with both pads loaded the way real matches load them
  * (fruit: a 2-stack on col0 + cols 1,2,3; dessert: cols 0,1,3) at live match
- * time, NO HUD element covers any on-pad crate pixel — at 1280x800, 844x390
- * and 667x320. Crate boxes are the real Phaser sprite bounds (artFeedback)
- * mapped through the canvas rect; HUD boxes are the live DOM rects.
+ * time, NO HUD element covers any on-pad crate pixel. Crate boxes are the
+ * real Phaser sprite bounds (artFeedback) mapped through the canvas rect;
+ * HUD boxes are the live DOM rects.
+ *
+ * Sizes: the three card sizes plus the small-phone landscapes from review
+ * round 1 (comment #435/#444): 740x360 (dessert HP icon regression),
+ * 700x360, 640x360, 690x390 (guard/loadout over dessert crates) and
+ * 568x320 (guard/loadout + #tw-btn-switch over crates).
  */
 
 const SIZES = [
   { width: 1280, height: 800 },
   { width: 844, height: 390 },
   { width: 667, height: 320 },
+  { width: 740, height: 360 },
+  { width: 700, height: 360 },
+  { width: 690, height: 390 },
+  { width: 640, height: 360 },
+  { width: 568, height: 320 },
 ];
 
 interface Rect {

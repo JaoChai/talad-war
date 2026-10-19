@@ -141,8 +141,13 @@
 }
 
 /* Short-landscape / narrow: 280 px tray, 4 px gaps, 60×72 buttons, 14/20.
-   Match the dock/command-row band too: the loadout starts at x304 there. */
-@media (max-width: 740px), (max-height: 350px) and (min-width: 600px) {
+   Match the dock/command-row band too: the loadout starts at x304 there.
+   R2c round 2: same narrow tray across the whole 560-843px <=400px-tall
+   landscape band, so the docked tray and the loadout at x304 keep their 8px
+   gap at every in-band size. */
+@media (max-width: 740px),
+  (max-height: 350px) and (min-width: 600px),
+  (orientation: landscape) and (min-width: 560px) and (max-width: 843px) and (max-height: 400px) {
   #tw-class-pick {
     width: 280px;
   }
@@ -209,8 +214,15 @@
 
 /* Owner-approved B dock: Lead also includes the <=350px command-row band,
    so browser bars cannot leave fetch behind the tray on wider phones.
-   #app beats shell.css's older narrow tray nudge. */
-@media (max-width: 700px) and (orientation: landscape), (max-height: 350px) and (min-width: 600px) {
+   #app beats shell.css's older narrow tray nudge.
+   R2c round 2 (review #444) extends the same dock to the whole 560-843px
+   landscape band up to 400px tall (740x360, 700x360, 690x390, 640x360,
+   568x320): the centred 41vh tray lands 0.5px under the dessert crates at
+   843x351 and on the fruit stack crate at 800x390, and the nudged centred
+   tray would overlap the left-docked loadout. */
+@media (max-width: 700px) and (orientation: landscape),
+  (max-height: 350px) and (min-width: 600px),
+  (orientation: landscape) and (min-width: 560px) and (max-width: 843px) and (max-height: 400px) {
   #app #tw-class-pick {
     left: max(var(--tw-r2-space-4), env(safe-area-inset-left));
     top: max(56px, calc(env(safe-area-inset-top) + 56px));
