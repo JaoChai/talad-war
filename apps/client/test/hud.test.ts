@@ -251,9 +251,12 @@ describe('R1 preview states', () => {
     preview.sync(s);
     expect(preview.el.textContent).toBe(`กำลังผสม: บาซูก้ามะพร้าว${quality ? ' พิเศษ' : ''}`);
     expect(stars(preview.el)).toHaveLength(quality ? 1 : 0);
-    expect(preview.el.querySelector('img[src$="prop_shot_coconut.webp"]')).not.toBeNull();
-    // R2d: the mixing label carries the weapon's colour chip and border.
+    // Review round 1 #2: the mixing label carries exactly ONE weapon marker —
+    // the colour chip. The coconut art stays in the loadout panel only.
     expect(chipOf(preview.el)?.style.background).toBe(RECIPE_COLOURS.heavy);
+    expect(preview.el.querySelectorAll('.tw-chip')).toHaveLength(1);
+    expect(preview.el.querySelectorAll('.tw-item-coconut')).toHaveLength(0);
+    expect(preview.el.querySelectorAll('img[src$="prop_shot_coconut.webp"]')).toHaveLength(0);
     expect(preview.el.style.borderColor).toBe(RECIPE_COLOURS.heavy);
   });
 

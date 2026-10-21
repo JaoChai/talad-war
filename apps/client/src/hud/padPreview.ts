@@ -67,7 +67,6 @@ export class PreviewText {
   sync(state: MatchState): void {
     let text = '';
     let quality = false;
-    let heavy = false;
     let weapon: Recipe | null = null;
     let notRecipe = false;
     if (state.winner === null) {
@@ -80,7 +79,6 @@ export class PreviewText {
         // Empty is hidden, and errors must never promise a recipe or star.
       } else {
         quality = preview.super;
-        heavy = preview.recipe === 'heavy';
         weapon = preview.recipe;
         // R2d (owner: "เวลาผสมก็ต้องบอกด้วย ว่ากำลังผสมอาวุธอะไร").
         text = th.mixing + qualityName(recipeName(preview.recipe), quality);
@@ -91,7 +89,9 @@ export class PreviewText {
       if (!text) {
         this.el.replaceChildren();
       } else {
-        const label = itemLabel(text, quality, heavy);
+        // Review round 1 #2: ONE weapon marker here — the chip. The coconut
+        // art (itemLabel's heavy flag) stays in the loadout panel only.
+        const label = itemLabel(text, quality);
         if (weapon) {
           // R2d chip: same map as the pad rim glow, so the colours always match.
           const chip = document.createElement('span');
