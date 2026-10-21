@@ -195,7 +195,7 @@ test.describe('R1 HUD', () => {
         ...(col === 2 ? { kind: 'super' as const } : {}),
       })),
     );
-    await expect(page.locator('.tw-preview')).toHaveText('จะได้: บาซูก้ามะพร้าว พิเศษ');
+    await expect(page.locator('.tw-preview')).toHaveText('กำลังผสม: บาซูก้ามะพร้าว พิเศษ');
     await expect(page.locator('.tw-preview').locator(star)).toBeVisible();
     await geometry(page);
     await screenshot(page, info, 'super-heavy-preview');
@@ -217,7 +217,7 @@ test.describe('R1 HUD', () => {
     await screenshot(page, info, 'crafted-heavy');
 
     await stage(page, [{ col: 0, layer: 0 }]);
-    await expect(page.locator('.tw-preview')).toHaveText('จะได้: ปืนฉีดน้ำ');
+    await expect(page.locator('.tw-preview')).toHaveText('กำลังผสม: ปืนฉีดน้ำ');
     await open(page, touch);
     expect(await page.evaluate(() => window.__talad.state().units[0]!.gun)).toEqual({
       ammoCooldownTicks: 0,
@@ -270,7 +270,7 @@ test.describe('R1 HUD', () => {
       { col: 0, layer: 1, kind: 'super' },
       { col: 0, layer: 0 },
     ]);
-    await expect(page.locator('.tw-preview')).toHaveText('จะได้: ลูกทีม พิเศษ');
+    await expect(page.locator('.tw-preview')).toHaveText('กำลังผสม: ลูกทีม พิเศษ');
     await open(page, info.project.name === 'mobile-landscape');
     const after = await page.evaluate(
       () => (window.__talad as unknown as TaladTestHooks).state().units,
@@ -434,13 +434,13 @@ test.describe('R1 HUD', () => {
     s.crates[0] = { ...s.crates[0]!, id, state: 'onPad' };
     s.pads.fruit.cells[0]![0] = id;
     await render(s);
-    await expect(page.locator('.tw-preview')).toHaveText('จะได้: ปืนฉีดน้ำ พิเศษ');
+    await expect(page.locator('.tw-preview')).toHaveText('กำลังผสม: ปืนฉีดน้ำ พิเศษ');
     await page
       .locator('.tw-preview img, .tw-loadout img')
       .evaluateAll((images) => images.forEach((image) => image.dispatchEvent(new Event('error'))));
     await render(s);
     await expect(page.locator('.tw-preview img')).toBeHidden();
-    await expect(page.locator('.tw-preview')).toHaveText('จะได้: ปืนฉีดน้ำ พิเศษ');
+    await expect(page.locator('.tw-preview')).toHaveText('กำลังผสม: ปืนฉีดน้ำ พิเศษ');
     await expect(page.locator('.tw-item-primary')).toHaveText('บาซูก้ามะพร้าว พิเศษ');
     await geometry(page);
     await screenshot(page, info, 'missing-image-fallback');
