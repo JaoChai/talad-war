@@ -120,8 +120,13 @@ export class PreviewText {
     const origin = state.pads.fruit.origin;
     // R2c: the x1.3 art raised the 2-stack sprite, so the label needs a higher
     // anchor on desktop-scale canvases; on phone-landscape canvases the tray
-    // (DOM-fixed px) binds instead and 0.4 is the verified compromise.
-    const lift = this.canvas.getBoundingClientRect().height >= 480 ? 0.8 : 0.4;
+    // (DOM-fixed px) binds instead. R2d: the 66px crates + 43px stack lift and
+    // the taller 18px label raised the stack tops / label box into both the
+    // class tray (docked top-left or bottom-41vh) and the stacks. The label
+    // box is <=27px tall in the small band (<=34px desktop), and the 0.9 lift
+    // centers it in the measured tray..stacks window at every padHudClearance
+    // size (R2c round-3 probes: 800x304 tray bottom 174, stack top ~214).
+    const lift = 0.9;
     const at = worldToStage({ x: origin.x + 2 * PAD_CELL_SIZE, y: origin.y - lift });
     const rect = this.canvas.getBoundingClientRect();
     const half = this.el.getBoundingClientRect().width / 2;

@@ -343,11 +343,14 @@ body {
   /* R2d (owner: "เวลาผสมก็ต้องบอกด้วย ว่ากำลังผสมอาวุธอะไร"): the label was
      small and low-contrast, easy to miss — solid dark panel, >=18px text, and
      a 2px border tinted per state inline from hud/padPreview.ts (weapon colour
-     while a valid recipe sits on the pad, grey for not-a-recipe). */
+     while a valid recipe sits on the pad, grey for not-a-recipe).
+     2px vertical padding keeps the box <=34px tall so it still clears the
+     class tray above and the on-pad stacks below at 844x390 (padHudClearance). */
   background: #1b1030;
   border: 2px solid rgba(255, 255, 255, 0.35);
+  padding: 2px var(--tw-r1-space-3);
   font-size: 18px;
-  line-height: 26px;
+  line-height: 22px;
   z-index: 11;
 }
 
@@ -1029,10 +1032,13 @@ body {
     text-overflow: ellipsis;
   }
 
-  /* R2d: the mixing label stays >=15 CSS px in the small-phone band. */
+  /* R2d: the mixing label stays >=15 CSS px in the small-phone band; the tight
+     line-height + 1px block padding keep the box <=28px so it fits between the
+     docked class tray above and the on-pad stacks below at 560-843x<=400. */
   .tw-preview {
     font-size: 15px;
-    line-height: 21px;
+    line-height: 19px;
+    padding-block: 1px;
   }
 
   #tw-btn-switch {
