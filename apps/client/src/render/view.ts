@@ -19,6 +19,7 @@ import {
 import { ClassDecorations } from './classDecorations';
 import { ControlledMarker } from './controlledMarker';
 import {
+  GROUND_CRATE_WIDTH,
   ON_PAD_CRATE_WIDTH,
   ON_PAD_STACK_OFFSET,
   STAGE_SCALE,
@@ -45,7 +46,8 @@ const HURT_FLASH_MS = 220;
 const STALL_FLASH_MS = 200;
 const STALL_CUE_GAP_MS = 200;
 const STALL_SHAKE_MS = 160;
-const GROUND_CRATE_WIDTH = 2.2 * STAGE_SCALE;
+// R2d: moved to render/world.ts and shared with ON_PAD_CRATE_WIDTH (one width
+// constant; the card forbids duplicating the 66 px literal).
 const WINDUP_MS = 110;
 /** Carried crates hang from the raised hands at 207/256 of the sheet cell. */
 const CARGO_OFFSET = 207 / 256;

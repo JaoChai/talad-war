@@ -1,8 +1,25 @@
 import { PAD_CELL_SIZE, padCellAt, padPreview, controlledUnit } from '@talad/sim';
-import type { MatchState, Vec2 } from '@talad/sim';
+import type { MatchState, Recipe, Vec2 } from '@talad/sim';
 import { th, recipeName, qualityName } from '../i18n/th';
 import { itemLabel } from './status';
+import { RECIPE_COLOURS } from './recipeColour';
 import { STAGE_H, STAGE_W, padPaintedCellStagePos, worldToStage } from '../render/world';
+
+/** R2d greys for the not-a-recipe label (card: "Not a recipe: grey ยังไม่ใช่สูตร"). */
+const NOT_RECIPE_TEXT = '#adb5bd';
+const NOT_RECIPE_BORDER = '#868e96';
+
+/**
+ * R2d: the recipe currently mixed on the human's own pad, or null when nothing
+ * valid sits there (empty / not a recipe / team full / match over). Pure
+ * source of truth shared by the label chip and the pad rim glow (padGlow.ts)
+ * so a weapon's label colour and glow colour can never diverge.
+ */
+export function activeRecipe(state: MatchState): Recipe | null {
+  if (state.winner !== null) return null;
+  const preview = padPreview(state, 'fruit');
+  return preview.openable ? preview.recipe : null;
+}
 
 /**
  * The pad cell the controlled body stands on when alive on its own pad, else
@@ -51,23 +68,50 @@ export class PreviewText {
     let text = '';
     let quality = false;
     let heavy = false;
+    let weapon: Recipe | null = null;
+    let notRecipe = false;
     if (state.winner === null) {
       const preview = padPreview(state, 'fruit');
       if (!preview.openable) {
-        if (preview.reason === 'notRecipe') text = th.preview_notRecipe;
-        else if (preview.reason === 'teamFull') text = th.preview_teamFull;
+        if (preview.reason === 'notRecipe') {
+          text = th.preview_notRecipe;
+          notRecipe = true;
+        } else if (preview.reason === 'teamFull') text = th.preview_teamFull;
         // Empty is hidden, and errors must never promise a recipe or star.
       } else {
         quality = preview.super;
         heavy = preview.recipe === 'heavy';
-        text = th.willGet + qualityName(recipeName(preview.recipe), quality);
+        weapon = preview.recipe;
+        // R2d (owner: "เวลาผสมก็ต้องบอกด้วย ว่ากำลังผสมอาวุธอะไร").
+        text = th.mixing + qualityName(recipeName(preview.recipe), quality);
       }
     }
     if (text !== this.textKey) {
       this.textKey = text;
-      this.el.replaceChildren(...(text ? [itemLabel(text, quality, heavy)] : []));
+      if (!text) {
+        this.el.replaceChildren();
+      } else {
+        const label = itemLabel(text, quality, heavy);
+        if (weapon) {
+          // R2d chip: same map as the pad rim glow, so the colours always match.
+          const chip = document.createElement('span');
+          chip.className = 'tw-chip';
+          chip.setAttribute('aria-hidden', 'true');
+          chip.style.background = RECIPE_COLOURS[weapon];
+          label.prepend(chip);
+        }
+        this.el.replaceChildren(label);
+      }
     }
     this.el.hidden = text === '';
+    // R2d: weapon-colour border for a valid recipe, grey for not-a-recipe,
+    // default panel border for team-full (unchanged look).
+    this.el.style.borderColor = weapon
+      ? RECIPE_COLOURS[weapon]
+      : notRecipe
+        ? NOT_RECIPE_BORDER
+        : '';
+    this.el.style.color = notRecipe ? NOT_RECIPE_TEXT : '';
     this.position(state);
   }
 
