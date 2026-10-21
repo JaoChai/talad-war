@@ -18,11 +18,13 @@ import { recipeGlowColour } from './recipeColour';
  * glow. The pulse is OFF under prefers-reduced-motion (static rim remains).
  */
 
-/** Rim layers: [ellipse scale vs the pad art width, fill alpha]. */
+/** Rim layers: [ellipse scale vs the pad art width, fill alpha]. Owner choice B
+ * needs the weapon hue to READ over the faint team-colour pad glow, so the
+ * rim sits slightly outside it (team glow is 1.2x) with assertive alphas. */
 const RIM_LAYERS: ReadonlyArray<readonly [scale: number, alpha: number]> = [
-  [1.3, 0.1],
-  [1.12, 0.16],
-  [0.92, 0.22],
+  [1.45, 0.26],
+  [1.24, 0.34],
+  [1.04, 0.42],
 ];
 /** The pad art frame is ~370x220 — keep the rim's iso-squashed proportions. */
 const PAD_ART_RATIO = 220 / 370;
