@@ -114,7 +114,9 @@ test.describe('match scene', () => {
       .toBeGreaterThanOrEqual(1);
 
     // The preview shows the Thai recipe text for 1 crate: a water gun.
-    await expect(page.locator('.tw-preview')).toHaveText('จะได้: ปืนฉีดน้ำ', { timeout: 10_000 });
+    await expect(page.locator('.tw-preview')).toHaveText('กำลังผสม: ปืนฉีดน้ำ', {
+      timeout: 10_000,
+    });
 
     // Open! is available; on phone the button appears, on desktop E triggers it.
     if (isMobile) {

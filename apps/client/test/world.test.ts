@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PAD_CELL_SIZE, PAD_FLOOR } from '@talad/sim';
 import {
+  GROUND_CRATE_WIDTH,
   MIN_UNIT_DRAW_Y,
   ON_PAD_CRATE_WIDTH,
   ON_PAD_STACK_OFFSET,
@@ -54,18 +55,19 @@ describe('world mapping guards (review round 1)', () => {
     expect(padCenterOffset()).toEqual({ x: 2.2, y: 2.2 });
   });
 
-  it('sizes the on-pad crate from the pad cell (0.9x cell), per the R2b mockup', () => {
-    // The owner mockup fixed the on-pad crate at ~0.9 of a pad cell so it
-    // visually matches the enlarged ground crates instead of the stale 34 px.
-    expect(ON_PAD_CRATE_WIDTH).toBe(Math.round(0.9 * PAD_CELL_SIZE * STAGE_SCALE));
-    // R2b values: 0.9 * 2.2 * 30 = 59.4 -> 59 px, vs ground crate 66 px.
-    expect(ON_PAD_CRATE_WIDTH).toBe(59);
+  it('sizes the on-pad crate exactly at the ground-crate width (R2d owner note)', () => {
+    // R2d owner playtest ("ลังบนแท่นเล็กกว่าลังพื้นตอนผสม"): on-pad crates draw
+    // at the SAME width as ground crates, derived from ONE shared constant in
+    // render/world.ts — the card forbids duplicating the 66 px literal.
+    expect(GROUND_CRATE_WIDTH).toBe(2.2 * STAGE_SCALE);
+    expect(ON_PAD_CRATE_WIDTH).toBe(Math.round(GROUND_CRATE_WIDTH));
+    expect(ON_PAD_CRATE_WIDTH).toBe(66);
   });
 
   it('scales the layer-1 stack offset with the on-pad crate width (22 px at 34 px)', () => {
     expect(ON_PAD_STACK_OFFSET).toBe(Math.round(ON_PAD_CRATE_WIDTH * (22 / 34)));
-    // R2b values: round(59 * 22 / 34) = 38 px, up from the stale 22 px.
-    expect(ON_PAD_STACK_OFFSET).toBe(38);
+    // R2d values: round(66 * 22 / 34) = 43 px, up from R2b's 38 px at 59 px.
+    expect(ON_PAD_STACK_OFFSET).toBe(43);
   });
 
   it('places on-pad crates at the painted cell centres of the pad art (R2b round 2)', () => {

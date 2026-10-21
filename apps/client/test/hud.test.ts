@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createMatch } from '@talad/sim';
 import type { MatchState, SquadCommand } from '@talad/sim';
 import { applyToggle, SquadCommands } from '../src/hud/commands';
-import { glowCellFor, glowStagePos, PreviewText } from '../src/hud/padPreview';
+import { activeRecipe, glowCellFor, glowStagePos, PreviewText } from '../src/hud/padPreview';
+import { RECIPE_COLOURS } from '../src/hud/recipeColour';
 import { padPaintedCellStagePos } from '../src/render/world';
 import { StallBars } from '../src/hud/stallBars';
 import { MatchHud } from '../src/hud/status';
@@ -113,6 +114,9 @@ function layout(s: MatchState, entries: { col: number; layer: 0 | 1; super?: boo
 }
 
 const stars = (el: HTMLElement) => el.querySelectorAll('img[src$="prop_badge_super.webp"]');
+
+/** R2d chip helper: the small colour swatch inside the mixing label. */
+const chipOf = (el: HTMLElement) => el.querySelector<HTMLElement>('.tw-chip');
 
 // R2-9 note: the fixtures below deliberately pin the DEFAULT control start
 // (createMatch's human = unit 0 = `controlledUnit` at tick 0), per the §8
@@ -245,40 +249,53 @@ describe('R1 preview states', () => {
       [0, 1, 2, 3].map((col) => ({ col, layer: 0, super: col === 2 && quality })),
     );
     preview.sync(s);
-    expect(preview.el.textContent).toBe(`จะได้: บาซูก้ามะพร้าว${quality ? ' พิเศษ' : ''}`);
+    expect(preview.el.textContent).toBe(`กำลังผสม: บาซูก้ามะพร้าว${quality ? ' พิเศษ' : ''}`);
     expect(stars(preview.el)).toHaveLength(quality ? 1 : 0);
-    expect(preview.el.querySelector('img[src$="prop_shot_coconut.webp"]')).not.toBeNull();
+    // Review round 1 #2: the mixing label carries exactly ONE weapon marker —
+    // the colour chip. The coconut art stays in the loadout panel only.
+    expect(chipOf(preview.el)?.style.background).toBe(RECIPE_COLOURS.heavy);
+    expect(preview.el.querySelectorAll('.tw-chip')).toHaveLength(1);
+    expect(preview.el.querySelectorAll('.tw-item-coconut')).toHaveLength(0);
+    expect(preview.el.querySelectorAll('img[src$="prop_shot_coconut.webp"]')).toHaveLength(0);
+    expect(preview.el.style.borderColor).toBe(RECIPE_COLOURS.heavy);
   });
 
   it('shows super gun/bombs/buddy but suppresses all stars on errors, empty and finished pads', () => {
     const preview = new PreviewText(document.createElement('div'));
     const s = state();
-    for (const [entries, want] of [
-      [[{ col: 0, layer: 0, super: true }], 'จะได้: ปืนฉีดน้ำ พิเศษ'],
+    for (const [entries, recipe, want] of [
+      [[{ col: 0, layer: 0, super: true }], 'gun', 'กำลังผสม: ปืนฉีดน้ำ พิเศษ'],
       [
         [
           { col: 0, layer: 0 },
           { col: 1, layer: 0, super: true },
         ],
-        'จะได้: ระเบิด พิเศษ',
+        'bombs',
+        'กำลังผสม: ระเบิด พิเศษ',
       ],
       [
         [
           { col: 0, layer: 0 },
           { col: 0, layer: 1, super: true },
         ],
-        'จะได้: ลูกทีม พิเศษ',
+        'buddy',
+        'กำลังผสม: ลูกทีม พิเศษ',
       ],
     ] as const) {
       layout(s, [...entries]);
       preview.sync(s);
       expect(preview.el.textContent).toBe(want);
       expect(stars(preview.el)).toHaveLength(1);
+      expect(chipOf(preview.el)?.style.background).toBe(RECIPE_COLOURS[recipe]);
+      expect(preview.el.style.borderColor).toBe(RECIPE_COLOURS[recipe]);
     }
     s.units.push({ ...s.units[1]!, id: 6 }, { ...s.units[1]!, id: 7 });
     preview.sync(s);
     expect(preview.el.textContent).toBe('ทีมเต็มแล้ว');
     expect(stars(preview.el)).toHaveLength(0);
+    // Team full keeps the default look: no chip, no weapon border.
+    expect(chipOf(preview.el)).toBeNull();
+    expect(preview.el.style.borderColor).toBe('');
     layout(s, [
       { col: 0, layer: 0, super: true },
       { col: 3, layer: 0 },
@@ -286,6 +303,10 @@ describe('R1 preview states', () => {
     preview.sync(s);
     expect(preview.el.textContent).toBe('ยังไม่ใช่สูตร');
     expect(stars(preview.el)).toHaveLength(0);
+    // R2d: not-a-recipe reads grey — muted text, grey border, no chip.
+    expect(chipOf(preview.el)).toBeNull();
+    expect(preview.el.style.color).toBe('#adb5bd');
+    expect(preview.el.style.borderColor).toBe('#868e96');
     layout(s, []);
     preview.sync(s);
     expect(preview.el.hidden).toBe(true);
@@ -308,7 +329,75 @@ describe('R1 preview states', () => {
     preview.sync(s);
     expect(star.hidden).toBe(true);
     expect(stars(preview.el)[0]).toBe(star);
-    expect(preview.el.textContent).toBe('จะได้: ปืนฉีดน้ำ พิเศษ');
+    expect(preview.el.textContent).toBe('กำลังผสม: ปืนฉีดน้ำ พิเศษ');
+  });
+});
+
+describe('R2d activeRecipe (label chip + pad glow source of truth)', () => {
+  it.each([
+    [[{ col: 0, layer: 0 }], 'gun'],
+    [
+      [
+        { col: 0, layer: 0 },
+        { col: 1, layer: 0 },
+      ],
+      'bombs',
+    ],
+    [
+      [
+        { col: 0, layer: 0 },
+        { col: 0, layer: 1 },
+      ],
+      'buddy',
+    ],
+    [
+      [
+        { col: 0, layer: 0 },
+        { col: 1, layer: 0 },
+        { col: 2, layer: 0 },
+        { col: 3, layer: 0 },
+      ],
+      'heavy',
+    ],
+    [
+      [
+        { col: 0, layer: 0 },
+        { col: 0, layer: 1 },
+        { col: 1, layer: 0 },
+        { col: 1, layer: 1 },
+      ],
+      'class',
+    ],
+  ] as const)('lights %s -> %s', (entries, recipe) => {
+    const s = state();
+    layout(s, [...entries]);
+    expect(activeRecipe(s)).toBe(recipe);
+  });
+
+  it('stays dark for diagonal pairs, three crates, team-full buddy, empty and finished pads', () => {
+    const s = state();
+    layout(s, [
+      { col: 0, layer: 0 },
+      { col: 3, layer: 0 },
+    ]);
+    expect(activeRecipe(s)).toBeNull(); // diagonal pair is not a recipe
+    layout(s, [
+      { col: 0, layer: 0 },
+      { col: 1, layer: 0 },
+      { col: 3, layer: 0 },
+    ]);
+    expect(activeRecipe(s)).toBeNull(); // three crates: no shape
+    s.units.push({ ...s.units[1]!, id: 6 }, { ...s.units[1]!, id: 7 });
+    layout(s, [
+      { col: 0, layer: 0 },
+      { col: 0, layer: 1 },
+    ]);
+    expect(activeRecipe(s)).toBeNull(); // team full: no glow
+    layout(s, []);
+    expect(activeRecipe(s)).toBeNull(); // empty pad
+    layout(s, [{ col: 0, layer: 0 }]);
+    s.winner = 'dessert';
+    expect(activeRecipe(s)).toBeNull(); // match over
   });
 });
 
@@ -345,7 +434,7 @@ describe('pad preview', () => {
     s.pads.fruit.cells[0]![0] = 1;
     preview.sync(s);
     expect(preview.el.hidden).toBe(false);
-    expect(preview.el.textContent).toBe('จะได้: ปืนฉีดน้ำ');
+    expect(preview.el.textContent).toBe('กำลังผสม: ปืนฉีดน้ำ');
     s.pads.fruit.cells[0]![0] = null;
     s.pads.fruit.cells[0]![1] = null;
     s.pads.fruit.cells[0]![0] = 1; // two ground crates in cols 0 and 3:

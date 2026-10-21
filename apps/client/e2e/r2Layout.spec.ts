@@ -535,6 +535,152 @@ test('the tray never covers the pad preview label or its crates (normal + super,
   }
 });
 
+test('R2d: on-pad crates match the ground width, sit on the pad art, and the mixing label is big, dark and weapon-coloured', async ({
+  page,
+}) => {
+  await page.goto('/?seed=1');
+  await enterMatch(page);
+  await page.evaluate(() => window.__talad.setPadCrates('fruit', [0, 1])); // bombs
+  await page.waitForTimeout(250);
+
+  // Freeze the sim, mirror one pad crate onto the ground (render-only
+  // fixture), then compare the REAL display widths via artFeedback.
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+  });
+  const sizes = await page.evaluate(() => {
+    const st = window.__talad.state() as import('@talad/sim').MatchState;
+    const padId = st.pads.fruit.cells[0]![0]!;
+    st.crates.push({
+      id: 9001,
+      pos: { x: 6, y: 12 },
+      kind: 'normal',
+      state: 'ground',
+      landTick: 0,
+    });
+    window.__talad.renderSnapshot(st, st, 1);
+    const sprites = window.__talad.artFeedback().sprites;
+    const byName = (name: string) => {
+      const found = sprites.find((s) => s.name === name);
+      if (!found) throw new Error(`sprite ${name} missing`);
+      return found;
+    };
+    const padArt = sprites.find((s) => s.texture === 'pad_fruit');
+    if (!padArt) throw new Error('pad_fruit sprite missing');
+    return {
+      onPad: byName(`crate-${padId}`).width,
+      ground: byName('crate-9001').width,
+      padArt,
+      onPadCrates: st.pads.fruit.cells
+        .flat()
+        .filter((id): id is number => id !== null)
+        .map((id) => byName(`crate-${id}`)),
+    };
+  });
+  expect(sizes.ground).toBe(66); // GROUND_CRATE_WIDTH = 2.2 * STAGE_SCALE
+  expect(sizes.onPad, 'R2d: on-pad crate draws at the ground width').toBe(sizes.ground);
+  // Ground-layer crates stay on the pad art (no overhang past the outer rim;
+  // a layer-1 stack may rise above the art — that reads as one tall stack).
+  const padLeft = sizes.padArt.x - sizes.padArt.width / 2;
+  const padRight = sizes.padArt.x + sizes.padArt.width / 2;
+  const padBottom = sizes.padArt.y + sizes.padArt.height * (1 - sizes.padArt.originY);
+  for (const crate of sizes.onPadCrates) {
+    expect(crate.x - crate.width / 2, 'crate left inside the pad art').toBeGreaterThanOrEqual(
+      padLeft - 3,
+    );
+    expect(crate.x + crate.width / 2, 'crate right inside the pad art').toBeLessThanOrEqual(
+      padRight + 3,
+    );
+    expect(crate.y + crate.height / 2, 'crate bottom inside the pad art').toBeLessThanOrEqual(
+      padBottom + 3,
+    );
+  }
+  await page.evaluate(() => {
+    delete (document as { hidden?: boolean }).hidden;
+  });
+
+  // Mixing label: solid dark panel, weapon colour, size floors per band.
+  await expect(page.locator('.tw-preview')).toHaveText('กำลังผสม: ระเบิด');
+  for (const [w, h, font] of [
+    [1280, 800, '18px'],
+    [844, 390, '18px'],
+    [667, 320, '15px'],
+    [568, 320, '15px'],
+  ] as const) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.waitForTimeout(250);
+    const style = await page.locator('.tw-preview').evaluate((el) => {
+      const cs = getComputedStyle(el);
+      const chip = el.querySelector<HTMLElement>('.tw-chip');
+      return {
+        fontSize: cs.fontSize,
+        background: cs.backgroundColor,
+        border: cs.borderColor,
+        chip: chip ? getComputedStyle(chip).backgroundColor : '',
+      };
+    });
+    expect(style.fontSize, `${w}×${h} label font floor`).toBe(font);
+    expect(style.background, `${w}×${h} solid dark panel`).toBe('rgb(27, 16, 48)');
+    expect(style.border, `${w}×${h} weapon-colour border`).toBe('rgb(255, 146, 43)');
+    expect(style.chip, `${w}×${h} chip in the weapon colour`).toBe('rgb(255, 146, 43)');
+  }
+
+  // Not a recipe: grey label, no weapon colour, no chip.
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(250);
+  await page.evaluate(() => window.__talad.setPadCrates('fruit', [0, 3])); // diagonal
+  await page.waitForTimeout(250);
+  await expect(page.locator('.tw-preview')).toHaveText('ยังไม่ใช่สูตร');
+  const muted = await page.locator('.tw-preview').evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { color: cs.color, border: cs.borderColor, chip: !!el.querySelector('.tw-chip') };
+  });
+  expect(muted.border, 'grey border for not-a-recipe').toBe('rgb(134, 142, 150)');
+  expect(muted.color, 'grey text for not-a-recipe').toBe('rgb(173, 181, 189)');
+  expect(muted.chip, 'no chip for not-a-recipe').toBe(false);
+});
+
+test('R2d review 1 #3: the heavy mixing label stays inside the viewport at 568x320', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 568, height: 320 });
+  await page.goto('/?seed=1');
+  await enterMatch(page);
+  const layouts: ReadonlyArray<ReadonlyArray<{ col: number; layer: 0 | 1; kind?: 'super' }>> = [
+    // plain heavy: 4 ground-layer crates
+    [
+      { col: 0, layer: 0 },
+      { col: 1, layer: 0 },
+      { col: 2, layer: 0 },
+      { col: 3, layer: 0 },
+    ],
+    // super heavy: the star <img> loads after the first clamp measurement
+    [
+      { col: 0, layer: 0, kind: 'super' },
+      { col: 1, layer: 0 },
+      { col: 2, layer: 0 },
+      { col: 3, layer: 0 },
+    ],
+  ];
+  for (const layout of layouts) {
+    await page.evaluate((entries) => window.__talad.setPadLayout('fruit', entries), layout);
+    await expect(page.locator('.tw-preview')).toHaveText(/กำลังผสม: บาซูก้ามะพร้าว( พิเศษ)?/);
+    // Every label image settled (star art loads after the first position()).
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll('.tw-preview img')].every(
+        (img) => (img as HTMLImageElement).complete,
+      ),
+    );
+    await page.waitForTimeout(150);
+    const box = (await page.locator('.tw-preview').boundingBox())!;
+    expect(box, 'label rendered').toBeTruthy();
+    expect(box.x, 'label left edge inside viewport').toBeGreaterThanOrEqual(0);
+    expect(box.y, 'label top edge inside viewport').toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width, 'label right edge inside viewport').toBeLessThanOrEqual(568);
+    expect(box.y + box.height, 'label bottom edge inside viewport').toBeLessThanOrEqual(320);
+  }
+});
+
 test('1280×800 desktop: switch visible (not hidden by the touch rule) and no overlaps', async ({
   page,
 }, info) => {

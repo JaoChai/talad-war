@@ -41,6 +41,7 @@ export const th = {
   throwBomb: 'โยน',
   open: 'เปิด!',
   willGet: 'จะได้: ',
+  mixing: 'กำลังผสม: ',
   recipeGun: 'ปืนฉีดน้ำ',
   recipeBombs: 'ระเบิด',
   recipeBuddy: 'ลูกทีม',

@@ -62,11 +62,18 @@ export function padArtStageWidth(): number {
 }
 
 /**
- * R2b: a crate resting on a pad fills ~90% of its pad cell (owner mockup for
- * the enlarged pad), so it reads at ground-crate scale instead of the stale
- * 34 px literal that A1's 66 px ground crates dwarfed.
+ * R2d (owner playtest "ลังบนแท่นเล็กกว่าลังพื้นตอนผสม"): ground crates draw at
+ * 2.2 world units (66 stage px) — the single width constant shared by ground
+ * crates in render/view.ts and, since R2d, on-pad crates too.
  */
-export const ON_PAD_CRATE_WIDTH = Math.round(0.9 * PAD_CELL_SIZE * STAGE_SCALE);
+export const GROUND_CRATE_WIDTH = 2.2 * STAGE_SCALE;
+
+/**
+ * R2d: a crate resting on a pad draws at the SAME stage width as a ground
+ * crate so the pad stack reads at cargo scale; replaces R2b's 0.9x-cell 59 px.
+ * Derived from GROUND_CRATE_WIDTH — never a duplicated literal.
+ */
+export const ON_PAD_CRATE_WIDTH = Math.round(GROUND_CRATE_WIDTH);
 
 /**
  * R2b: layer-1 stack lift above the lower crate, keeping the shipped
