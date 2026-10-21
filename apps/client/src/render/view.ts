@@ -2,8 +2,6 @@ import Phaser from 'phaser';
 import {
   DROP_FALL_TICKS,
   DT,
-  PAD_CELL_SIZE,
-  PAD_FLOOR,
   STALL_MAX_HP,
   UNIT_SPEED,
   controlledUnit,
@@ -25,6 +23,7 @@ import {
   ON_PAD_STACK_OFFSET,
   STAGE_SCALE,
   clampDrawY,
+  padArtStageWidth,
   padCenterOffset,
   padPaintedCellStagePos,
   worldToStage,
@@ -506,7 +505,9 @@ export class MatchView {
       let sprite = this.padSprites.get(key);
       if (!sprite) {
         sprite = this.scene.add.image(0, 0, key);
-        const width = PAD_FLOOR * PAD_CELL_SIZE * STAGE_SCALE;
+        // R2c: art drawn PAD_ART_SCALE x the world span (one named constant in
+        // render/world.ts, shared with the painted-cell crate positions).
+        const width = padArtStageWidth();
         this.sizeProp(sprite, width);
         // Painted top-surface centre is at 35% of the trimmed image height.
         sprite.setOrigin(0.5, 0.35);

@@ -48,6 +48,20 @@ export function padCenterOffset(): Vec2 {
 }
 
 /**
+ * R2c (owner: "ปรับที่แท่นวางกล่องผสมให้เท่ากับขนาดกล่อง มันเล็กไป"): the pad
+ * ART is drawn PAD_ART_SCALE x the world-rect span so each on-pad crate reads
+ * as sitting on one painted tile. Lead mock measured x1.3 at 7.5/10 (vs 4/10
+ * at x1.0, crates overhanging the painted tiles); the card bounds tuning to
+ * 1.2..1.35. The sim pad rect (packages/sim) is untouched — art only.
+ */
+export const PAD_ART_SCALE = 1.3;
+
+/** Stage-space width the pad art sprite is drawn at (world span x PAD_ART_SCALE). */
+export function padArtStageWidth(): number {
+  return PAD_FLOOR * PAD_CELL_SIZE * STAGE_SCALE * PAD_ART_SCALE;
+}
+
+/**
  * R2b: a crate resting on a pad fills ~90% of its pad cell (owner mockup for
  * the enlarged pad), so it reads at ground-crate scale instead of the stale
  * 34 px literal that A1's 66 px ground crates dwarfed.
@@ -88,7 +102,7 @@ const PAD_ART_ORIGIN_PX: Vec2 = { x: 185.3, y: 77.2 };
 export function padPaintedCellStageOffset(col: number): Vec2 {
   const art = PAD_ART_TILE_CENTRES[col];
   if (!art) throw new Error(`pad col ${col} is outside the 2x2 painted floor`);
-  const scale = (PAD_FLOOR * PAD_CELL_SIZE * STAGE_SCALE) / 370;
+  const scale = padArtStageWidth() / 370;
   return {
     x: Math.round((art.x - PAD_ART_ORIGIN_PX.x) * scale),
     y: Math.round((art.y - PAD_ART_ORIGIN_PX.y) * scale),

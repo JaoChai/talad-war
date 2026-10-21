@@ -1,8 +1,8 @@
 import { PAD_CELL_SIZE, padCellAt, padPreview, controlledUnit } from '@talad/sim';
-import type { MatchState } from '@talad/sim';
+import type { MatchState, Vec2 } from '@talad/sim';
 import { th, recipeName, qualityName } from '../i18n/th';
 import { itemLabel } from './status';
-import { STAGE_H, STAGE_W, worldToStage } from '../render/world';
+import { STAGE_H, STAGE_W, padPaintedCellStagePos, worldToStage } from '../render/world';
 
 /**
  * The pad cell the controlled body stands on when alive on its own pad, else
@@ -15,6 +15,18 @@ export function glowCellFor(state: MatchState): number | null {
   const unit = controlledUnit(state);
   if (!unit || unit.team !== 'fruit' || unit.deadUntilTick !== null) return null;
   return padCellAt(state.pads.fruit, unit.pos);
+}
+
+/**
+ * R2c: the glow's stage position — the PAINTED tile centre of the glow cell,
+ * not the world-rect cell centre (the x1.3 art grew away from the world rect,
+ * so the old position glowed the skirt). Pure so the unit tests stay
+ * engine-free; PadGlow (Phaser) is the only consumer.
+ */
+export function glowStagePos(state: MatchState): Vec2 | null {
+  const col = glowCellFor(state);
+  if (col === null) return null;
+  return padPaintedCellStagePos(state.pads.fruit.origin, col);
 }
 
 /**
@@ -62,7 +74,11 @@ export class PreviewText {
   private position(state: MatchState): void {
     if (!this.canvas) return;
     const origin = state.pads.fruit.origin;
-    const at = worldToStage({ x: origin.x + 2 * PAD_CELL_SIZE, y: origin.y - 0.3 });
+    // R2c: the x1.3 art raised the 2-stack sprite, so the label needs a higher
+    // anchor on desktop-scale canvases; on phone-landscape canvases the tray
+    // (DOM-fixed px) binds instead and 0.4 is the verified compromise.
+    const lift = this.canvas.getBoundingClientRect().height >= 480 ? 0.8 : 0.4;
+    const at = worldToStage({ x: origin.x + 2 * PAD_CELL_SIZE, y: origin.y - lift });
     const rect = this.canvas.getBoundingClientRect();
     const half = this.el.getBoundingClientRect().width / 2;
     const x = rect.left + (at.x * rect.width) / STAGE_W;

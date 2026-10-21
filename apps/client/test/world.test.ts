@@ -4,8 +4,10 @@ import {
   MIN_UNIT_DRAW_Y,
   ON_PAD_CRATE_WIDTH,
   ON_PAD_STACK_OFFSET,
+  PAD_ART_SCALE,
   STAGE_SCALE,
   clampDrawY,
+  padArtStageWidth,
   padCellOffset,
   padCenterOffset,
   padPaintedCellStageOffset,
@@ -73,15 +75,42 @@ describe('world mapping guards (review round 1)', () => {
     // an iso diamond; tile centroids measured once on prop_pad_fruit.webp /
     // prop_pad_dessert.webp (the two arts agree within ~2 art px, worst team
     // deviation <= 1 stage px) give these stage offsets from the pad centre:
-    expect(padPaintedCellStageOffset(0)).toEqual({ x: 2, y: -12 }); // back tile
-    expect(padPaintedCellStageOffset(1)).toEqual({ x: 26, y: 1 }); // right tile
-    expect(padPaintedCellStageOffset(2)).toEqual({ x: -27, y: -1 }); // left tile
-    expect(padPaintedCellStageOffset(3)).toEqual({ x: -3, y: 12 }); // front tile
+    // R2c pins: same centroids at the x1.3 art scale (PAD_ART_SCALE).
+    expect(padPaintedCellStageOffset(0)).toEqual({ x: 2, y: -15 }); // back tile
+    expect(padPaintedCellStageOffset(1)).toEqual({ x: 33, y: 1 }); // right tile
+    expect(padPaintedCellStageOffset(2)).toEqual({ x: -35, y: -1 }); // left tile
+    expect(padPaintedCellStageOffset(3)).toEqual({ x: -4, y: 16 }); // front tile
     // Absolute positions: fruit pad origin (8,18) -> centre (10.2,20.2) ->
     // worldToStage = (40 + 10.2*30, 20.2*30) = (346,606).
-    expect(padPaintedCellStagePos({ x: 8, y: 18 }, 0)).toEqual({ x: 348, y: 594 });
-    expect(padPaintedCellStagePos({ x: 8, y: 18 }, 3)).toEqual({ x: 343, y: 618 });
+    expect(padPaintedCellStagePos({ x: 8, y: 18 }, 0)).toEqual({ x: 348, y: 591 });
+    expect(padPaintedCellStagePos({ x: 8, y: 18 }, 3)).toEqual({ x: 342, y: 622 });
     // Dessert pad origin (27.6,1.6) -> centre (29.8,3.8) -> (934,114).
-    expect(padPaintedCellStagePos({ x: 27.6, y: 1.6 }, 1)).toEqual({ x: 960, y: 115 });
+    expect(padPaintedCellStagePos({ x: 27.6, y: 1.6 }, 1)).toEqual({ x: 967, y: 115 });
+  });
+});
+
+describe('R2c pad art scale (owner: "ปรับที่แท่นวางกล่องให้เท่ากับขนาดกล่อง")', () => {
+  it('draws the pad art PAD_ART_SCALE x the world-rect span, tuned inside 1.2..1.35', () => {
+    // Lead mock: pad art x1.3 makes each on-pad crate read as sitting on one
+    // painted tile (7.5/10 vs 4/10 at x1.0); the card bounds the tuning.
+    expect(PAD_ART_SCALE).toBeGreaterThanOrEqual(1.2);
+    expect(PAD_ART_SCALE).toBeLessThanOrEqual(1.35);
+    // R2c values: 2 * 2.2 * 30 * 1.3 = 171.6 px wide, up from 132.
+    expect(padArtStageWidth()).toBeCloseTo(
+      PAD_FLOOR * PAD_CELL_SIZE * STAGE_SCALE * PAD_ART_SCALE,
+      6,
+    );
+    expect(padArtStageWidth()).toBeCloseTo(171.6, 3);
+  });
+
+  it('scales the painted-cell offsets with the art (x1.3 pins)', () => {
+    // Same measured centroids as R2b, now multiplied by 171.6/370 art scale.
+    expect(padPaintedCellStageOffset(0)).toEqual({ x: 2, y: -15 }); // back tile
+    expect(padPaintedCellStageOffset(1)).toEqual({ x: 33, y: 1 }); // right tile
+    expect(padPaintedCellStageOffset(2)).toEqual({ x: -35, y: -1 }); // left tile
+    expect(padPaintedCellStageOffset(3)).toEqual({ x: -4, y: 16 }); // front tile
+    expect(padPaintedCellStagePos({ x: 8, y: 18 }, 0)).toEqual({ x: 348, y: 591 });
+    expect(padPaintedCellStagePos({ x: 8, y: 18 }, 3)).toEqual({ x: 342, y: 622 });
+    expect(padPaintedCellStagePos({ x: 27.6, y: 1.6 }, 1)).toEqual({ x: 967, y: 115 });
   });
 });
