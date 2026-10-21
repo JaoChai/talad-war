@@ -3,7 +3,7 @@ import { PAD_CELL_SIZE } from '@talad/sim';
 import type { MatchState, Recipe } from '@talad/sim';
 import { activeRecipe, glowStagePos } from './padPreview';
 import { padArtStageWidth, padCenterOffset, STAGE_SCALE, worldToStage } from '../render/world';
-import { recipeGlowColour, recipeGlowHighlight } from './recipeColour';
+import { recipeGlowColour, recipeGlowHighlight, recipeGlowShadow } from './recipeColour';
 
 /**
  * The `pad_tile_glow` sprite shown on the cell of the human's own pad that
@@ -28,17 +28,17 @@ const HALO_LAYERS: ReadonlyArray<readonly [scale: number, alpha: number]> = [
 ];
 /**
  * The saturated outline rings ON the art: [scale vs art width, line width in
- * stage px, stroke alpha, colour kind]. The 0.99x ring is the derived
- * HIGHLIGHT (a light line on the pad surface — the part that makes the dark
- * coconut-brown readable); the 1.07x ring is the weapon colour hugging the
- * outer edge; the 1.18x one softens the step to the floor.
+ * stage px, stroke alpha, colour kind]. From outside in: a dark frame of the
+ * SAME hex (keeps the hue readable where warm crate/lantern light bleeds over
+ * it), the weapon colour hugging the edge, and the derived light accent ON the
+ * pad surface.
  */
 const RIM_RINGS: ReadonlyArray<
-  readonly [scale: number, width: number, alpha: number, kind: 'base' | 'highlight']
+  readonly [scale: number, width: number, alpha: number, kind: 'base' | 'highlight' | 'shadow']
 > = [
-  [0.99, 5, 0.95, 'highlight'],
+  [1.16, 9, 1, 'shadow'],
   [1.07, 12, 1, 'base'],
-  [1.18, 4, 0.5, 'base'],
+  [0.99, 5, 0.95, 'highlight'],
 ];
 /** The pad art frame is ~370x220 — keep the rim's iso-squashed proportions. */
 const PAD_ART_RATIO = 220 / 370;
@@ -117,9 +117,11 @@ export class PadGlow {
     if (recipe !== this.recipe) {
       const colour = recipeGlowColour(recipe);
       const highlight = recipeGlowHighlight(recipe);
+      const shadow = recipeGlowShadow(recipe);
       this.rimRings.forEach((ring, i) => {
         const [, width, alpha, kind] = RIM_RINGS[i]!;
-        ring.setStrokeStyle(width, kind === 'highlight' ? highlight : colour, alpha);
+        const tint = kind === 'highlight' ? highlight : kind === 'shadow' ? shadow : colour;
+        ring.setStrokeStyle(width, tint, alpha);
       });
       this.haloRings.forEach((halo, i) => halo.setFillStyle(colour, HALO_LAYERS[i]![1]));
       this.recipe = recipe;

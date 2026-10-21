@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Recipe } from '@talad/sim';
-import { RECIPE_COLOURS, recipeGlowColour, recipeGlowHighlight } from '../src/hud/recipeColour';
+import {
+  RECIPE_COLOURS,
+  recipeGlowColour,
+  recipeGlowHighlight,
+  recipeGlowShadow,
+} from '../src/hud/recipeColour';
 
 /**
  * R2d (owner choice B, playtest 2026-10-21): one colour per recipe, shared by
@@ -18,7 +23,7 @@ describe('recipe colours (owner choice B)', () => {
   it('pins the owner-chosen hues', () => {
     expect(RECIPE_COLOURS.gun).toBe('#4dabf7'); // sky blue
     expect(RECIPE_COLOURS.bombs).toBe('#ff922b'); // orange
-    expect(RECIPE_COLOURS.heavy).toBe('#a05a17'); // saturated coconut-brown
+    expect(RECIPE_COLOURS.heavy).toBe('#8a4d15'); // dark coconut-brown
     expect(RECIPE_COLOURS.buddy).toBe('#f783ac'); // pink
     expect(RECIPE_COLOURS.class).toBe('#9775fa'); // purple
   });
@@ -52,6 +57,17 @@ describe('recipe colours (owner choice B)', () => {
       const hi = recipeGlowHighlight(recipe);
       expect(hi, recipe).toBeGreaterThan(parseInt(base.slice(1), 16));
     }
-    expect(recipeGlowHighlight('heavy')).toBe(0xcba47f); // lighten(#a05a17, 45%)
+    expect(recipeGlowHighlight('heavy')).toBe(0xbf9d7e); // lighten(#8a4d15, 45%)
+  });
+
+  it('derives a darker glow frame per recipe (heavy must not bleed into the crate gold)', () => {
+    // Four crates carry warm golden glows; without a dark frame the brown rim
+    // bleeds into that gold and reads "amber". Derived from the SAME hex.
+    for (const recipe of Object.keys(RECIPE_COLOURS) as Recipe[]) {
+      const base = RECIPE_COLOURS[recipe]!;
+      const shadow = recipeGlowShadow(recipe);
+      expect(shadow, recipe).toBeLessThan(parseInt(base.slice(1), 16));
+    }
+    expect(recipeGlowShadow('heavy')).toBe(0x5a320e); // darken(#8a4d15, 35%)
   });
 });
