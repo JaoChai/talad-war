@@ -18,9 +18,23 @@ describe('recipe colours (owner choice B)', () => {
   it('pins the owner-chosen hues', () => {
     expect(RECIPE_COLOURS.gun).toBe('#4dabf7'); // sky blue
     expect(RECIPE_COLOURS.bombs).toBe('#ff922b'); // orange
-    expect(RECIPE_COLOURS.heavy).toBe('#c7893b'); // brown/amber
+    expect(RECIPE_COLOURS.heavy).toBe('#a05a17'); // saturated coconut-brown
     expect(RECIPE_COLOURS.buddy).toBe('#f783ac'); // pink
     expect(RECIPE_COLOURS.class).toBe('#9775fa'); // purple
+  });
+
+  it('keeps heavy clearly separable from bombs (review round 1 #1)', () => {
+    // The old tan #c7893b read as the same warm haze as bombs over the dark
+    // floor (RGB distance ~59). The rim must name the weapon at a glance.
+    const distance = (a: string, b: string) => {
+      const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+      const [ra, ga, ba] = rgb(a);
+      const [rb, gb, bb] = rgb(b);
+      return Math.sqrt(
+        (ra! - rb!) ** 2 + (ga! - gb!) ** 2 + (ba! - bb!) ** 2,
+      );
+    };
+    expect(distance(RECIPE_COLOURS.heavy, RECIPE_COLOURS.bombs)).toBeGreaterThanOrEqual(100);
   });
 
   it('exposes the same colours as Phaser ints for the pad glow', () => {

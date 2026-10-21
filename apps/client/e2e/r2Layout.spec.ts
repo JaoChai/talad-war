@@ -640,6 +640,51 @@ test('R2d: on-pad crates match the ground width, sit on the pad art, and the mix
   expect(muted.chip, 'no chip for not-a-recipe').toBe(false);
 });
 
+test('R2d review 1 #3: the heavy mixing label stays inside the viewport at 568x320', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 568, height: 320 });
+  await page.goto('/?seed=1');
+  await enterMatch(page);
+  const layouts: ReadonlyArray<
+    ReadonlyArray<{ col: number; layer: 0 | 1; kind?: 'super' }>
+  > = [
+    // plain heavy: 4 ground-layer crates
+    [
+      { col: 0, layer: 0 },
+      { col: 1, layer: 0 },
+      { col: 2, layer: 0 },
+      { col: 3, layer: 0 },
+    ],
+    // super heavy: the star <img> loads after the first clamp measurement
+    [
+      { col: 0, layer: 0, kind: 'super' },
+      { col: 1, layer: 0 },
+      { col: 2, layer: 0 },
+      { col: 3, layer: 0 },
+    ],
+  ];
+  for (const layout of layouts) {
+    await page.evaluate((entries) => window.__talad.setPadLayout('fruit', entries), layout);
+    await expect(page.locator('.tw-preview')).toHaveText(
+      /กำลังผสม: บาซูก้ามะพร้าว( พิเศษ)?/,
+    );
+    // Every label image settled (star art loads after the first position()).
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll('.tw-preview img')].every(
+        (img) => (img as HTMLImageElement).complete,
+      ),
+    );
+    await page.waitForTimeout(150);
+    const box = (await page.locator('.tw-preview').boundingBox())!;
+    expect(box, 'label rendered').toBeTruthy();
+    expect(box.x, 'label left edge inside viewport').toBeGreaterThanOrEqual(0);
+    expect(box.y, 'label top edge inside viewport').toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width, 'label right edge inside viewport').toBeLessThanOrEqual(568);
+    expect(box.y + box.height, 'label bottom edge inside viewport').toBeLessThanOrEqual(320);
+  }
+});
+
 test('1280×800 desktop: switch visible (not hidden by the touch rule) and no overlaps', async ({
   page,
 }, info) => {

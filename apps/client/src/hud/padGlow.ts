@@ -12,19 +12,24 @@ import { recipeGlowColour } from './recipeColour';
  * R2c: positioned on the PAINTED tile (glowStagePos), not the world-rect cell.
  *
  * R2d (owner choice B, playtest 2026-10-21): while a valid recipe sits on the
- * human's pad, a soft rim glow in that weapon's colour pulses around the pad
- * art — layered ellipses behind the pad sprite, the same technique as the
- * view's groundGlow. Not-a-recipe / empty / team full / match over: no colour
- * glow. The pulse is OFF under prefers-reduced-motion (static rim remains).
+ * human's pad, the pad glows in that weapon's colour. Review round 1 #1: the
+ * first pass drew only floor haloes BEHIND the art (depth -6) and they read as
+ * haze. Now the colour is drawn ON the pad art itself — a saturated stroked
+ * outline ring sitting at depth -4 (above the pad art at -5, below the crates,
+ * which render at their floor y >= 0) — plus two soft halo ellipses behind for
+ * the bloom. Not-a-recipe / empty / team full / match over: no colour glow.
+ * The pulse is OFF under prefers-reduced-motion (static rim remains).
  */
 
-/** Rim layers: [ellipse scale vs the pad art width, fill alpha]. Owner choice B
- * needs the weapon hue to READ over the faint team-colour pad glow, so the
- * rim sits slightly outside it (team glow is 1.2x) with assertive alphas. */
-const RIM_LAYERS: ReadonlyArray<readonly [scale: number, alpha: number]> = [
-  [1.45, 0.26],
-  [1.24, 0.34],
-  [1.04, 0.42],
+/** Soft bloom haloes behind the pad art: [ellipse scale vs the art width, fill alpha]. */
+const HALO_LAYERS: ReadonlyArray<readonly [scale: number, alpha: number]> = [
+  [1.3, 0.3],
+  [1.12, 0.45],
+];
+/** The saturated outline ring ON the art edge: [scale, line width in stage px, stroke alpha]. */
+const RIM_RINGS: ReadonlyArray<readonly [scale: number, width: number, alpha: number]> = [
+  [1.05, 9, 0.95],
+  [1.16, 4, 0.5],
 ];
 /** The pad art frame is ~370x220 — keep the rim's iso-squashed proportions. */
 const PAD_ART_RATIO = 220 / 370;
@@ -33,6 +38,10 @@ const PULSE_MS = 900;
 export class PadGlow {
   private readonly scene: Phaser.Scene;
   private readonly img: Phaser.GameObjects.Image;
+  /** Soft bloom, behind the pad art (-5). */
+  private readonly halos: Phaser.GameObjects.Container;
+  private readonly haloRings: Phaser.GameObjects.Ellipse[] = [];
+  /** Saturated outline ON the pad art, below the crates. */
   private readonly rim: Phaser.GameObjects.Container;
   private readonly rimRings: Phaser.GameObjects.Ellipse[] = [];
   private pulse: Phaser.Tweens.Tween | null = null;
@@ -45,11 +54,11 @@ export class PadGlow {
     this.img.setDisplaySize(PAD_CELL_SIZE * STAGE_SCALE, PAD_CELL_SIZE * STAGE_SCALE * (116 / 214));
     this.img.setDepth(-4); // above the pad base (-5), below crates and units
     this.img.setVisible(false);
-    this.rim = scene.add.container(0, 0);
-    this.rim.setName('pad-recipe-glow');
     const artWidth = padArtStageWidth();
-    for (const [scale, alpha] of RIM_LAYERS) {
-      const ring = scene.add.ellipse(
+    this.halos = scene.add.container(0, 0);
+    this.halos.setName('pad-recipe-halos');
+    for (const [scale, alpha] of HALO_LAYERS) {
+      const halo = scene.add.ellipse(
         0,
         0,
         artWidth * scale,
@@ -57,10 +66,28 @@ export class PadGlow {
         0xffffff,
         alpha,
       );
+      this.haloRings.push(halo);
+      this.halos.add(halo);
+    }
+    this.halos.setDepth(-6); // with the team glow, behind the pad art
+    this.halos.setVisible(false);
+    this.rim = scene.add.container(0, 0);
+    this.rim.setName('pad-recipe-glow');
+    for (const [scale, width, alpha] of RIM_RINGS) {
+      const ring = scene.add.ellipse(
+        0,
+        0,
+        artWidth * scale,
+        artWidth * scale * PAD_ART_RATIO,
+      );
+      // Fillless stroked outline — the colour ON the pad art's edge.
+      ring.setStrokeStyle(width, 0xffffff, alpha);
       this.rimRings.push(ring);
       this.rim.add(ring);
     }
-    this.rim.setDepth(-6); // with the team glow, behind the pad art (-5)
+    // Above the pad art (-5) and the tile glow (-4, added earlier so it sorts
+    // below), below every crate/unit (they render at floor(y) >= 0).
+    this.rim.setDepth(-4);
     this.rim.setVisible(false);
   }
 
@@ -77,6 +104,7 @@ export class PadGlow {
     const recipe = activeRecipe(state);
     if (recipe === null) {
       this.rim.setVisible(false);
+      this.halos.setVisible(false);
       this.pulse?.remove();
       this.pulse = null;
       this.recipe = null;
@@ -84,7 +112,10 @@ export class PadGlow {
     }
     if (recipe !== this.recipe) {
       const colour = recipeGlowColour(recipe);
-      this.rimRings.forEach((ring, i) => ring.setFillStyle(colour, RIM_LAYERS[i]![1]));
+      this.rimRings.forEach((ring, i) =>
+        ring.setStrokeStyle(RIM_RINGS[i]![1], colour, RIM_RINGS[i]![2]),
+      );
+      this.haloRings.forEach((halo, i) => halo.setFillStyle(colour, HALO_LAYERS[i]![1]));
       this.recipe = recipe;
     }
     const centre = worldToStage({
@@ -92,14 +123,17 @@ export class PadGlow {
       y: state.pads.fruit.origin.y + padCenterOffset().y,
     });
     this.rim.setPosition(centre.x, centre.y);
+    this.halos.setPosition(centre.x, centre.y);
     this.rim.setVisible(true);
+    this.halos.setVisible(true);
     if (this.reducedMotion.matches) {
       this.pulse?.remove();
       this.pulse = null;
       this.rim.setAlpha(1);
+      this.halos.setAlpha(1);
     } else if (!this.pulse) {
       this.pulse = this.scene.tweens.add({
-        targets: this.rim,
+        targets: [this.rim, this.halos],
         alpha: { from: 0.8, to: 1 },
         duration: PULSE_MS,
         yoyo: true,

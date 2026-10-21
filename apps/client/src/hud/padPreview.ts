@@ -101,6 +101,14 @@ export class PreviewText {
           label.prepend(chip);
         }
         this.el.replaceChildren(label);
+        // Review round 1 #3: the first position() runs before any label <img>
+        // (super star art) loads, so `half` is stale until the next sync — and
+        // the next sync never comes while the render loop is paused (hidden
+        // tab, paused scene). Re-clamp the moment each image settles.
+        for (const img of label.querySelectorAll('img')) {
+          img.addEventListener('load', () => this.position(state), { once: true });
+          img.addEventListener('error', () => this.position(state), { once: true });
+        }
       }
     }
     this.el.hidden = text === '';
