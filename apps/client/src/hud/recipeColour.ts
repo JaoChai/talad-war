@@ -18,3 +18,16 @@ export const RECIPE_COLOURS: Readonly<Record<Recipe, string>> = {
 export function recipeGlowColour(recipe: Recipe): number {
   return parseInt(RECIPE_COLOURS[recipe].slice(1), 16);
 }
+
+/**
+ * A lighter companion of the SAME hex (mixed 45% toward white) for the glow's
+ * inner accent line — review round 1 #1: dark hues (coconut-brown) need a
+ * bright line on the pad or they drown under the crates' warm glows. Derived,
+ * never a second literal, so chip / glow / accent can never diverge.
+ */
+export function recipeGlowHighlight(recipe: Recipe): number {
+  const hex = RECIPE_COLOURS[recipe];
+  const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)!);
+  const [r, g, b] = c.map((v) => Math.round(v + (255 - v) * 0.45));
+  return ((r! << 16) | (g! << 8) | b!) >>> 0;
+}

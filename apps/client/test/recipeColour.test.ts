@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Recipe } from '@talad/sim';
-import { RECIPE_COLOURS, recipeGlowColour } from '../src/hud/recipeColour';
+import { RECIPE_COLOURS, recipeGlowColour, recipeGlowHighlight } from '../src/hud/recipeColour';
 
 /**
  * R2d (owner choice B, playtest 2026-10-21): one colour per recipe, shared by
@@ -30,9 +30,7 @@ describe('recipe colours (owner choice B)', () => {
       const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
       const [ra, ga, ba] = rgb(a);
       const [rb, gb, bb] = rgb(b);
-      return Math.sqrt(
-        (ra! - rb!) ** 2 + (ga! - gb!) ** 2 + (ba! - bb!) ** 2,
-      );
+      return Math.sqrt((ra! - rb!) ** 2 + (ga! - gb!) ** 2 + (ba! - bb!) ** 2);
     };
     expect(distance(RECIPE_COLOURS.heavy, RECIPE_COLOURS.bombs)).toBeGreaterThanOrEqual(100);
   });
@@ -43,5 +41,17 @@ describe('recipe colours (owner choice B)', () => {
       expect(recipeGlowColour(recipe)).toBe(parseInt(RECIPE_COLOURS[recipe]!.slice(1), 16));
     }
     expect(recipeGlowColour('gun')).toBe(0x4dabf7);
+  });
+
+  it('derives a lighter glow accent per recipe (review round 1 #1: heavy must not sink)', () => {
+    // The dark coconut-brown needs a bright companion line on the pad or it
+    // drowns under the crates' warm glows. Derived from the SAME hex — never a
+    // second literal.
+    for (const recipe of Object.keys(RECIPE_COLOURS) as Recipe[]) {
+      const base = RECIPE_COLOURS[recipe]!;
+      const hi = recipeGlowHighlight(recipe);
+      expect(hi, recipe).toBeGreaterThan(parseInt(base.slice(1), 16));
+    }
+    expect(recipeGlowHighlight('heavy')).toBe(0xcba47f); // lighten(#a05a17, 45%)
   });
 });

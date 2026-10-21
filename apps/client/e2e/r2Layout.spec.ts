@@ -646,9 +646,7 @@ test('R2d review 1 #3: the heavy mixing label stays inside the viewport at 568x3
   await page.setViewportSize({ width: 568, height: 320 });
   await page.goto('/?seed=1');
   await enterMatch(page);
-  const layouts: ReadonlyArray<
-    ReadonlyArray<{ col: number; layer: 0 | 1; kind?: 'super' }>
-  > = [
+  const layouts: ReadonlyArray<ReadonlyArray<{ col: number; layer: 0 | 1; kind?: 'super' }>> = [
     // plain heavy: 4 ground-layer crates
     [
       { col: 0, layer: 0 },
@@ -666,9 +664,7 @@ test('R2d review 1 #3: the heavy mixing label stays inside the viewport at 568x3
   ];
   for (const layout of layouts) {
     await page.evaluate((entries) => window.__talad.setPadLayout('fruit', entries), layout);
-    await expect(page.locator('.tw-preview')).toHaveText(
-      /กำลังผสม: บาซูก้ามะพร้าว( พิเศษ)?/,
-    );
+    await expect(page.locator('.tw-preview')).toHaveText(/กำลังผสม: บาซูก้ามะพร้าว( พิเศษ)?/);
     // Every label image settled (star art loads after the first position()).
     await page.waitForFunction(() =>
       [...document.querySelectorAll('.tw-preview img')].every(
